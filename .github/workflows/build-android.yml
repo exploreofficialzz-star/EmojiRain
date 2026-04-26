@@ -49,9 +49,12 @@ jobs:
       - name: 📦 Install dependencies
         run: flutter pub get
 
-      # 5. Generate launcher icons (Android only — avoids iOS path errors on CI)
+      # 5. Generate launcher icons (ios: false set in pubspec.yaml — Android only)
       - name: 🎨 Generate launcher icons
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons-android
+        run: |
+          set -e
+          dart run flutter_launcher_icons
+          echo "✅ Mipmap resources generated"
 
       # 6. Decode keystore (if secrets are available)
       - name: 🔑 Decode keystore
