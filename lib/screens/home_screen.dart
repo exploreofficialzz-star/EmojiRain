@@ -1,0 +1,379 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:provider/provider.dart';
+import '../constants/app_constants.dart';
+import '../providers/game_provider.dart';
+import '../services/ad_service.dart';
+import '../services/audio_service.dart';
+import '../services/notification_service.dart';
+import 'game_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  bool _bannerLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    // Load banner ad
+    AdService.instance.loadBanner(
+      size: AdSize.banner,
+      onLoaded: () => setState(() => _bannerLoaded = true),
+    );
+
+    // Cancel comeback notification since user opened app
+    NotificationService.instance.cancelComeback();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  void _startGame(BuildContext context) {
+    AudioService.instance.play(SoundEffect.tap);
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, anim, __) => const GameScreen(),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(
+          opacity: anim,
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = context.watch<GameProvider>();
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Column(
+        children: [
+          // ── Main Content ─────────────────────────────────────────────────
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(gradient: AppColors.bgGradient),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 32),
+                      _buildLogo(),
+                      const SizedBox(height: 40),
+                      _buildEmojiShowcase(),
+                      const SizedBox(height: 32),
+                      _buildHighScore(game),
+                      const SizedBox(height: 40),
+                      _buildStartButton(context),
+                      const SizedBox(height: 24),
+                      _buildSoundToggle(),
+                      const SizedBox(height: 16),
+                      _buildFakeStats(),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Banner Ad ────────────────────────────────────────────────────
+          if (_bannerLoaded && AdService.instance.bannerAd != null)
+            Container(
+              color: AppColors.background,
+              alignment: Alignment.bottomCenter,
+              width: AdService.instance.bannerAd!.size.width.toDouble(),
+              height: AdService.instance.bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: AdService.instance.bannerAd!),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return Column(
+      children: [
+        // Icon / Logo
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.4),
+                blurRadius: 32,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Image.asset(
+              'assets/images/icon.png',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                color: AppColors.surfaceCard,
+                child: const Text('🎮', style: TextStyle(fontSize: 60)),
+              ),
+            ),
+          ),
+        )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scale(
+              begin: const Offset(1.0, 1.0),
+              end: const Offset(1.04, 1.04),
+              duration: 1500.ms,
+              curve: Curves.easeInOut,
+            ),
+
+        const SizedBox(height: 20),
+
+        // Title
+        ShaderMask(
+          shaderCallback: (bounds) => AppColors.goldGradient.createShader(bounds),
+          child: const Text(
+            'EMOJI RAIN',
+            style: TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 2,
+            ),
+          ),
+        )
+            .animate()
+            .fadeIn(duration: 600.ms, delay: 200.ms)
+            .slideY(begin: 0.3, end: 0, duration: 500.ms, curve: Curves.easeOut),
+
+        const SizedBox(height: 6),
+
+        Text(
+          'FOCUS OR FAIL',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.accent.withOpacity(0.9),
+            letterSpacing: 4,
+          ),
+        )
+            .animate()
+            .fadeIn(duration: 600.ms, delay: 400.ms),
+      ],
+    );
+  }
+
+  Widget _buildEmojiShowcase() {
+    const emojis = ['❤️', '😊', '🤩', '😱', '💀', '🔥', '😎', '🥳'];
+    return SizedBox(
+      height: 70,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: emojis.length,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemBuilder: (context, i) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              emojis[i],
+              style: const TextStyle(fontSize: 42),
+            )
+                .animate(
+                  delay: Duration(milliseconds: i * 100),
+                  onPlay: (c) => c.repeat(reverse: true),
+                )
+                .moveY(
+                  begin: 0,
+                  end: -10,
+                  duration: Duration(milliseconds: 800 + i * 80),
+                  curve: Curves.easeInOut,
+                ),
+          );
+        },
+      ),
+    ).animate().fadeIn(delay: 300.ms, duration: 500.ms);
+  }
+
+  Widget _buildHighScore(GameProvider game) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('🏆', style: TextStyle(fontSize: 28)),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'BEST SCORE',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 2,
+                ),
+              ),
+              Text(
+                '${game.highScore}',
+                style: AppTextStyles.scoreText,
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 500.ms, duration: 500.ms).slideX(begin: -0.3, end: 0);
+  }
+
+  Widget _buildStartButton(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final scale = 1.0 + _pulseController.value * 0.03;
+        return Transform.scale(
+          scale: scale,
+          child: child,
+        );
+      },
+      child: GestureDetector(
+        onTap: () => _startGame(context),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          height: 64,
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryBtnGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.45),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('🎮', style: TextStyle(fontSize: 26)),
+              SizedBox(width: 12),
+              Text(
+                'PLAY NOW',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fadeIn(delay: 600.ms).scale(
+          begin: const Offset(0.8, 0.8),
+          end: const Offset(1, 1),
+          duration: 500.ms,
+          curve: Curves.elasticOut,
+        );
+  }
+
+  Widget _buildSoundToggle() {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final enabled = AudioService.instance.soundEnabled;
+        return GestureDetector(
+          onTap: () async {
+            await AudioService.instance.toggleSound();
+            setState(() {});
+          },
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                enabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                color: enabled ? AppColors.accent : AppColors.textSecondary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                enabled ? 'Sound ON' : 'Sound OFF',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: enabled ? AppColors.accent : AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFakeStats() {
+    return Column(
+      children: [
+        _statBadge('👥', '2.4M games played today'),
+        const SizedBox(height: 8),
+        _statBadge('🏆', 'Average score: 87 points'),
+        const SizedBox(height: 8),
+        _statBadge('🔥', 'Only 6% reach level 5'),
+      ],
+    ).animate().fadeIn(delay: 800.ms, duration: 600.ms);
+  }
+
+  Widget _statBadge(String emoji, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 14)),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
