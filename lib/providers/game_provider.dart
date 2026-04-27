@@ -82,14 +82,7 @@ class GameProvider extends ChangeNotifier {
       GameConstants.spawnIntervalByStage[_speedStage.clamp(0, 3)];
 
   /// Current music rate (1.0 → 1.6 mapped from speed stages)
-  double get musicRate {
-    const stages = GameConstants.speedRampMultipliers;
-    final min = stages.first;
-    final max = stages.last;
-    final t = (speedMultiplier - min) / (max - min);
-    return GameConstants.musicRateMin +
-        t * (GameConstants.musicRateMax - GameConstants.musicRateMin);
-  }
+  // Music rate is fixed — no speed changes
 
   int get comboMultiplier {
     if (_combo >= GameConstants.combo10x) return 10;
@@ -99,11 +92,11 @@ class GameProvider extends ChangeNotifier {
     return 1;
   }
 
-  /// Emoji cap grows with level: 5 at L1 → 28 at L15+
-  /// Formula: 5 + (level-1) * 1.6, clamped to maxEmojisOnScreen
+  /// Emoji cap grows with level: 9 at L1 → 28 at L15+
+  /// Formula: 9 + (level-1) * 1.3, clamped to maxEmojisOnScreen
   int get _maxEmojisThisLevel {
-    final computed = (5 + (_level - 1) * 1.6).round();
-    return computed.clamp(5, GameConstants.maxEmojisOnScreen);
+    final computed = (9 + (_level - 1) * 1.3).round();
+    return computed.clamp(9, GameConstants.maxEmojisOnScreen);
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
@@ -226,8 +219,7 @@ class GameProvider extends ChangeNotifier {
         .clamp(0, GameConstants.speedRampMultipliers.length - 1);
     if (newStage != _speedStage) {
       _speedStage = newStage;
-      // Sync music rate to speed
-      AudioService.instance.setBgMusicRate(musicRate);
+      // Music stays constant — no rate changes
     }
 
     // ── Level time expired → LEVEL UP ──────────────────────────────────────
@@ -432,15 +424,30 @@ class GameProvider extends ChangeNotifier {
   // ── Level Up ──────────────────────────────────────────────────────────────
   void _levelUp() {
     _level++;
-    _currentLevel        = LevelData.getLevel(_level);
-    _levelSecsRemaining  = GameConstants.levelDurationSecs;
-    _levelSecsElapsed    = 0;
-    _speedStage          = 0;
-    _spawnAccum          = 0.0;
+    _currentLevel       = LevelData.getLevel(_level);
+    _levelSecsRemaining = GameConstants.levelDurationSecs;
+    _spawnAccum         = 0.0;
     _emojis.clear();
 
-    // Reset music rate to base for new level (builds up again)
-    AudioService.instance.setBgMusicRate(GameConstants.musicRateMin);
+    // ── Carry speed stage forward — game never slows down between levels ─────
+    // _speedStage stays at whatever it was. We resync _levelSecsElapsed
+    // so the 1-second ticker doesn't immediately drop us back to stage 0.
+    _levelSecsElapsed = _speedStage * GameConstants.speedRampInterval;
+
+    // Each new level also gets a minimum stage boost so speed always increases
+    // Level 1→2: at least stage 0, Level 3+: at least stage 1,
+    // Level 6+: at least stage 2, Level 10+: always stage 3
+    final minStage = switch (_level) {
+      >= 10 => 3,
+      >= 6  => 2,
+      >= 3  => 1,
+      _     => 0,
+    };
+    if (_speedStage < minStage) {
+      _speedStage   = minStage;
+      _levelSecsElapsed = minStage * GameConstants.speedRampInterval;
+    }
+
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();
   }
