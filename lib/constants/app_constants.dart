@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 
-// ─── Brand Colors ────────────────────────────────────────────────────────────
+// ─── Brand Colors ─────────────────────────────────────────────────────────────
 class AppColors {
   static const Color background    = Color(0xFF08081A);
   static const Color surface       = Color(0xFF12122A);
@@ -9,14 +9,14 @@ class AppColors {
   static const Color primary       = Color(0xFFFFD700);
   static const Color primaryGlow   = Color(0xFFFFAA00);
   static const Color accent        = Color(0xFF00E5FF);
-  static const Color accentGlow    = Color(0xFF0099CC);
   static const Color success       = Color(0xFF00E676);
   static const Color error         = Color(0xFFFF1744);
-  static const Color warning       = Color(0xFFFF6D00);
   static const Color textPrimary   = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFFB0BEC5);
-  static const Color heartRed      = Color(0xFFFF4081);
   static const Color comboOrange   = Color(0xFFFF6F00);
+  static const Color timerGreen    = Color(0xFF00E676);
+  static const Color timerOrange   = Color(0xFFFF6D00);
+  static const Color timerRed      = Color(0xFFFF1744);
 
   static const LinearGradient bgGradient = LinearGradient(
     begin: Alignment.topCenter,
@@ -24,11 +24,9 @@ class AppColors {
     colors: [Color(0xFF0D0D2B), Color(0xFF08081A), Color(0xFF0A0A1F)],
     stops: [0.0, 0.5, 1.0],
   );
-
   static const LinearGradient goldGradient = LinearGradient(
     colors: [Color(0xFFFFD700), Color(0xFFFF8C00)],
   );
-
   static const LinearGradient primaryBtnGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
@@ -36,47 +34,32 @@ class AppColors {
   );
 }
 
-// ─── Text Styles ─────────────────────────────────────────────────────────────
+// ─── Text Styles ──────────────────────────────────────────────────────────────
 class AppTextStyles {
   static const TextStyle headlineLarge = TextStyle(
-    fontSize: 28,
-    fontWeight: FontWeight.w800,
-    color: AppColors.textPrimary,
+    fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textPrimary,
   );
-
   static const TextStyle bodyMedium = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w400,
-    color: AppColors.textSecondary,
+    fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary,
   );
-
   static const TextStyle scoreText = TextStyle(
-    fontSize: 42,
-    fontWeight: FontWeight.w900,
-    color: AppColors.primary,
-    letterSpacing: -1,
+    fontSize: 42, fontWeight: FontWeight.w900,
+    color: AppColors.primary, letterSpacing: -1,
   );
-
   static const TextStyle comboText = TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.w900,
-    color: AppColors.comboOrange,
+    fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.comboOrange,
   );
 }
 
-// ─── AdMob Unit IDs ──────────────────────────────────────────────────────────
+// ─── AdMob IDs ────────────────────────────────────────────────────────────────
 class AdIds {
-  // ⚠️  Replace with your real AdMob IDs before publishing.
   static bool get _isAndroid => Platform.isAndroid;
-
   static String get banner => _isAndroid
       ? 'ca-app-pub-3940256099942544/6300978111'
       : 'ca-app-pub-3940256099942544/2934735716';
-
   static String get interstitial => _isAndroid
       ? 'ca-app-pub-3940256099942544/1033173712'
       : 'ca-app-pub-3940256099942544/4411468910';
-
   static String get rewarded => _isAndroid
       ? 'ca-app-pub-3940256099942544/5224354917'
       : 'ca-app-pub-3940256099942544/1712485313';
@@ -84,22 +67,32 @@ class AdIds {
 
 // ─── Game Constants ───────────────────────────────────────────────────────────
 class GameConstants {
-  // ── Emoji sizing — BIG, impactful, tappable
-  static const double emojiSizeBase  = 82.0;
-  static const double emojiSizeLarge = 96.0;
-  static const double emojiSizeSmall = 66.0;
+  // ── Emoji sizing
+  static const double emojiSizeBase  = 80.0;
+  static const double emojiSizeSmall = 64.0;
 
-  // ── Speed (pixels / second)
-  static const double speedBase      = 130.0;
-  static const double speedMax       = 460.0;
-  static const double speedIncrement = 12.0;
+  // ── Base speeds (px/sec) — speed ramp applied on top
+  static const double speedBase      = 120.0;
+  static const double speedMax       = 520.0;
 
-  // ── Spawn — fast and chaotic
-  static const double spawnIntervalBase = 0.50;
-  static const double spawnIntervalMin  = 0.16;
+  // ── Time-based levels
+  static const int levelDurationSecs  = 60;   // each level = 60 seconds
+  static const int speedRampInterval  = 15;   // ramp speed every 15s
 
-  // ── NO lives. Wrong tap OR missing a target = INSTANT GAME OVER.
-  static const int maxLives = 1;
+  // ── Speed ramp stages (multipliers at 0s, 15s, 30s, 45s)
+  // Stage 0 = base, each stage adds progressively more
+  static const List<double> speedRampMultipliers = [1.0, 1.25, 1.55, 1.90];
+
+  // ── Music playback rate range (synced to speed ramp)
+  static const double musicRateMin = 1.0;
+  static const double musicRateMax = 1.6;
+
+  // ── Spawn interval (seconds between spawns) at each ramp stage
+  // Lower = faster spawning
+  static const List<double> spawnIntervalByStage = [0.55, 0.42, 0.30, 0.20];
+
+  // ── Max emojis simultaneously on screen
+  static const int maxEmojisOnScreen = 28;
 
   // ── Combo thresholds
   static const int combo2x  = 5;
@@ -107,14 +100,8 @@ class GameConstants {
   static const int combo5x  = 25;
   static const int combo10x = 50;
 
-  // ── Interstitial after EVERY game over
+  // ── Ads: every game over
   static const int adEveryNFails = 1;
-
-  // ── Score base per level advance
-  static const int scorePerLevel = 300;
-
-  // ── Dense chaos — up to 28 emojis simultaneously
-  static const int maxEmojisOnScreen = 28;
 
   // ── Notification IDs
   static const int notifDailyReminder = 1001;
