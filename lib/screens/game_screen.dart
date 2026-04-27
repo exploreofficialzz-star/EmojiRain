@@ -18,10 +18,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int  _prevLevel      = 1;
-  int  _prevStage      = 0;
   bool _showLevelUp    = false;
-  bool _showSpeedBanner = false;
-  int  _displayStage   = 0;
 
   final List<_ScoreDisplay> _scoreDisplays = [];
 
@@ -63,15 +60,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       });
     }
 
-    // Speed stage ramp
-    if (game.speedStage != _prevStage && game.speedStage > 0) {
-      _prevStage    = game.speedStage;
-      _displayStage = game.speedStage;
-      setState(() => _showSpeedBanner = true);
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        if (mounted) setState(() => _showSpeedBanner = false);
-      });
-    }
+
   }
 
   void _handleScoreEvents(GameProvider game) {
@@ -112,7 +101,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           body: Stack(
             children: [
               // ── Background ───────────────────────────────────────────────
-              _GameBackground(level: game.level, stage: game.speedStage),
+              _GameBackground(level: game.level),
 
               // ── Falling emojis ───────────────────────────────────────────
               ..._buildEmojis(game),
@@ -133,11 +122,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ScoreHUD(game: game),
                     const SizedBox(height: 6),
                     RuleDisplay(level: game.currentLevel, animateIn: _showLevelUp),
-                    // Speed stage pill
-                    if (game.speedStage > 0) ...[
-                      const SizedBox(height: 6),
-                      SpeedStageIndicator(stage: game.speedStage),
-                    ],
+
                     const Spacer(),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 18),
@@ -158,15 +143,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-              // ── Speed Up overlay ─────────────────────────────────────────
-              if (_showSpeedBanner)
-                Positioned(
-                  top: MediaQuery.sizeOf(context).height * 0.35,
-                  left: 0, right: 0,
-                  child: IgnorePointer(
-                    child: SpeedUpBanner(stage: _displayStage),
-                  ),
-                ),
+
 
               // ── Pause overlay ─────────────────────────────────────────────
               if (game.state == GameState.paused)
@@ -186,28 +163,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       )).toList();
 }
 
-// ─── Animated background tints with speed stage ───────────────────────────────
+// ─── Game Background ──────────────────────────────────────────────────────────
 class _GameBackground extends StatelessWidget {
   final int level;
-  final int stage;
-  const _GameBackground({required this.level, required this.stage});
+  const _GameBackground({required this.level});
 
   @override
   Widget build(BuildContext context) {
-    // Background gets slightly more intense as speed increases
-    final tint = stage / 3.0;
-    return AnimatedContainer(
-      duration: const Duration(seconds: 1),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0509), tint)!,
-            Color.lerp(const Color(0xFF08081A), const Color(0xFF100508), tint)!,
-          ],
-        ),
-      ),
+    return Container(
+      decoration: const BoxDecoration(gradient: AppColors.bgGradient),
       child: CustomPaint(size: Size.infinite, painter: _StarPainter(seed: level)),
     );
   }
