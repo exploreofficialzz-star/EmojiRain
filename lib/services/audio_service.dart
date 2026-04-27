@@ -27,16 +27,14 @@ class AudioService {
     //          → SFX never steals session from background music
     // Android: audioFocus = none for SFX so BG music is never ducked/paused
     await AudioPlayer.global.setAudioContext(
-      const AudioContext(
+      AudioContext(
         iOS: AudioContextIOS(
-          // 'ambient' mixes with other audio; never interrupts BG music
           category: AVAudioSessionCategory.ambient,
           options: {
             AVAudioSessionOptions.mixWithOthers,
           },
         ),
         android: AudioContextAndroid(
-          // Don't request audio focus — SFX plays on top without interrupting
           audioFocus: AndroidAudioFocus.none,
           contentType: AndroidContentType.sonification,
           usageType: AndroidUsageType.assistanceSonification,
