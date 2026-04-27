@@ -15,11 +15,12 @@ class ScoreHUD extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Lives
-          _LivesRow(lives: game.lives),
+          // Level badge
+          _LevelBadge(level: game.level),
+
           const Spacer(),
 
-          // Score
+          // Score (centre)
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -33,7 +34,7 @@ class ScoreHUD extends StatelessWidget {
                   .scale(
                     begin: const Offset(1.3, 1.3),
                     end: const Offset(1.0, 1.0),
-                    duration: 200.ms,
+                    duration: 180.ms,
                     curve: Curves.easeOut,
                   ),
               if (game.combo >= GameConstants.combo2x)
@@ -43,9 +44,13 @@ class ScoreHUD extends StatelessWidget {
                 )
                     .animate()
                     .fadeIn(duration: 150.ms)
-                    .shimmer(duration: 1000.ms, color: AppColors.comboOrange),
+                    .shimmer(
+                      duration: 900.ms,
+                      color: AppColors.comboOrange,
+                    ),
             ],
           ),
+
           const Spacer(),
 
           // Pause button
@@ -59,7 +64,11 @@ class ScoreHUD extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white.withOpacity(0.15)),
               ),
-              child: const Icon(Icons.pause_rounded, color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.pause_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -68,34 +77,59 @@ class ScoreHUD extends StatelessWidget {
   }
 }
 
-class _LivesRow extends StatelessWidget {
-  final int lives;
-  const _LivesRow({required this.lives});
+// ── Level Badge ───────────────────────────────────────────────────────────────
+class _LevelBadge extends StatelessWidget {
+  final int level;
+  const _LevelBadge({required this.level});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(GameConstants.maxLives, (i) {
-        final active = i < lives;
-        return Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: Text(
-            '❤️',
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        gradient: AppColors.goldGradient,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.35),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'LVL',
             style: TextStyle(
-              fontSize: 18,
-              color: active ? null : Colors.grey.withOpacity(0.3),
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+              letterSpacing: 1,
             ),
-          )
-              .animate(target: active ? 0 : 1)
-              .tint(color: Colors.grey.withOpacity(0.8)),
+          ),
+          Text(
+            '$level',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Colors.black,
+              height: 1.0,
+            ),
+          ),
+        ],
+      ),
+    ).animate(key: ValueKey(level)).scale(
+          begin: const Offset(1.4, 1.4),
+          end: const Offset(1.0, 1.0),
+          duration: 400.ms,
+          curve: Curves.elasticOut,
         );
-      }),
-    );
   }
 }
 
-// ─── Combo Streak Badge ───────────────────────────────────────────────────────
+// ── Combo Streak Badge ────────────────────────────────────────────────────────
 class ComboStreakBadge extends StatelessWidget {
   final int combo;
 

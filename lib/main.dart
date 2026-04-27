@@ -18,7 +18,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Status bar style
+  // Status bar styling
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -69,12 +69,9 @@ class EmojiRainApp extends StatelessWidget {
         error: AppColors.error,
       ),
       fontFamily: 'Roboto',
+      // Only reference styles that actually exist in AppTextStyles
       textTheme: const TextTheme(
-        displayLarge: AppTextStyles.displayLarge,
-        displayMedium: AppTextStyles.displayMedium,
         headlineLarge: AppTextStyles.headlineLarge,
-        headlineMedium: AppTextStyles.headlineMedium,
-        bodyLarge: AppTextStyles.bodyLarge,
         bodyMedium: AppTextStyles.bodyMedium,
       ),
       splashColor: Colors.transparent,

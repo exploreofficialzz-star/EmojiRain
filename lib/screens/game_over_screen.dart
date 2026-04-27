@@ -47,7 +47,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
       game.consumeInterstitialFlag();
       setState(() => _showingAd = true);
       await AdService.instance.showInterstitial(
-        onDismissed: () {
+        onComplete: () {
           if (mounted) setState(() { _showingAd = false; _adShown = true; });
         },
       );
@@ -90,7 +90,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
           );
         }
       },
-      onDismissed: () {
+      onSkipped: () {
         if (mounted) setState(() {});
       },
     );
