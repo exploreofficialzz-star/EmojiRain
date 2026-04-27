@@ -78,11 +78,11 @@ class _GameOverScreenState extends State<GameOverScreen> {
     final game = context.read<GameProvider>();
     final shown = await AdService.instance.showRewarded(
       onRewarded: () {
-        game.continueWithRewardedAd();
+        game.continueAfterRewardedAd();
         if (mounted) {
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
-              pageBuilder: (_, anim, __) => const GameScreen(),
+              pageBuilder: (_, anim, __) => const GameScreen(isContinue: true),
               transitionsBuilder: (_, anim, __, child) =>
                   FadeTransition(opacity: anim, child: child),
               transitionDuration: const Duration(milliseconds: 300),

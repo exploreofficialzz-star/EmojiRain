@@ -1,7 +1,6 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../constants/app_constants.dart';
 
-// ─── Ad Service ───────────────────────────────────────────────────────────────
 class AdService {
   AdService._();
   static final AdService instance = AdService._();
@@ -12,10 +11,7 @@ class AdService {
 
   BannerAd? get bannerAd => _bannerLoaded ? _bannerAd : null;
 
-  void loadBanner({
-    AdSize size = AdSize.banner,
-    void Function()? onLoaded,
-  }) {
+  void loadBanner({AdSize size = AdSize.banner, VoidCallback? onLoaded}) {
     _bannerAd?.dispose();
     _bannerLoaded = false;
 
@@ -28,11 +24,10 @@ class AdService {
           _bannerLoaded = true;
           onLoaded?.call();
         },
-        onAdFailedToLoad: (ad, err) {
+        onAdFailedToLoad: (ad, _) {
           ad.dispose();
           _bannerLoaded = false;
-          // Retry after 30s
-          Future.delayed(const Duration(seconds: 30), () => loadBanner(onLoaded: onLoaded));
+          Future.delayed(const Duration(seconds: 20), () => loadBanner(onLoaded: onLoaded));
         },
       ),
     )..load();
@@ -40,11 +35,11 @@ class AdService {
 
   void disposeBanner() {
     _bannerAd?.dispose();
-    _bannerAd    = null;
+    _bannerAd     = null;
     _bannerLoaded = false;
   }
 
-  // ── Interstitial ───────────────────────────────────────────────────────────
+  // ── Interstitial — preloaded, shown after every game over ──────────────────
   InterstitialAd? _interstitialAd;
   bool _interstitialReady = false;
 
@@ -57,16 +52,16 @@ class AdService {
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
-          _interstitialAd  = ad;
+          _interstitialAd    = ad;
           _interstitialReady = true;
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (a) {
               a.dispose();
               _interstitialAd    = null;
               _interstitialReady = false;
-              loadInterstitial(); // Pre-load next
+              loadInterstitial(); // Immediately reload for next time
             },
-            onAdFailedToShowFullScreenContent: (a, err) {
+            onAdFailedToShowFullScreenContent: (a, _) {
               a.dispose();
               _interstitialAd    = null;
               _interstitialReady = false;
@@ -74,16 +69,15 @@ class AdService {
             },
           );
         },
-        onAdFailedToLoad: (err) {
+        onAdFailedToLoad: (_) {
           _interstitialReady = false;
-          // Retry after delay
-          Future.delayed(const Duration(seconds: 20), loadInterstitial);
+          Future.delayed(const Duration(seconds: 15), loadInterstitial);
         },
       ),
     );
   }
 
-  Future<void> showInterstitial({void Function()? onDismissed}) async {
+  Future<void> showInterstitial({VoidCallback? onDismissed}) async {
     if (!_interstitialReady || _interstitialAd == null) {
       onDismissed?.call();
       return;
@@ -96,7 +90,7 @@ class AdService {
         loadInterstitial();
         onDismissed?.call();
       },
-      onAdFailedToShowFullScreenContent: (ad, err) {
+      onAdFailedToShowFullScreenContent: (ad, _) {
         ad.dispose();
         _interstitialAd    = null;
         _interstitialReady = false;
@@ -107,7 +101,7 @@ class AdService {
     await _interstitialAd!.show();
   }
 
-  // ── Rewarded ───────────────────────────────────────────────────────────────
+  // ── Rewarded — always preloaded, shown on "Continue" ──────────────────────
   RewardedAd? _rewardedAd;
   bool _rewardedReady = false;
 
@@ -123,20 +117,20 @@ class AdService {
           _rewardedAd    = ad;
           _rewardedReady = true;
         },
-        onAdFailedToLoad: (err) {
+        onAdFailedToLoad: (_) {
           _rewardedReady = false;
-          Future.delayed(const Duration(seconds: 20), loadRewarded);
+          Future.delayed(const Duration(seconds: 15), loadRewarded);
         },
       ),
     );
   }
 
   Future<bool> showRewarded({
-    required void Function() onRewarded,
-    void Function()? onDismissed,
+    required VoidCallback onRewarded,
+    VoidCallback? onDismissedWithoutReward,
   }) async {
     if (!_rewardedReady || _rewardedAd == null) {
-      onDismissed?.call();
+      onDismissedWithoutReward?.call();
       return false;
     }
 
@@ -146,28 +140,28 @@ class AdService {
         ad.dispose();
         _rewardedAd    = null;
         _rewardedReady = false;
-        loadRewarded();
-        if (!rewarded) onDismissed?.call();
+        loadRewarded(); // Preload next immediately
+        if (!rewarded) onDismissedWithoutReward?.call();
       },
-      onAdFailedToShowFullScreenContent: (ad, err) {
+      onAdFailedToShowFullScreenContent: (ad, _) {
         ad.dispose();
         _rewardedAd    = null;
         _rewardedReady = false;
         loadRewarded();
-        onDismissed?.call();
+        onDismissedWithoutReward?.call();
       },
     );
 
     await _rewardedAd!.show(
       onUserEarnedReward: (_, __) {
         rewarded = true;
-        onRewarded();
+        onRewarded(); // ← game continues from exact state
       },
     );
     return true;
   }
 
-  // ── Init + Dispose ─────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────────
   void init() {
     loadInterstitial();
     loadRewarded();

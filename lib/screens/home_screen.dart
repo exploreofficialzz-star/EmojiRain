@@ -29,13 +29,10 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
-    // Load banner ad
     AdService.instance.loadBanner(
-      size: AdSize.banner,
-      onLoaded: () => setState(() => _bannerLoaded = true),
+      onLoaded: () => mounted ? setState(() => _bannerLoaded = true) : null,
     );
 
-    // Cancel comeback notification since user opened app
     NotificationService.instance.cancelComeback();
   }
 
@@ -47,16 +44,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _startGame(BuildContext context) {
     AudioService.instance.play(SoundEffect.tap);
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (_, anim, __) => const GameScreen(),
-        transitionsBuilder: (_, anim, __, child) => FadeTransition(
-          opacity: anim,
-          child: child,
-        ),
-        transitionDuration: const Duration(milliseconds: 350),
-      ),
-    );
+    Navigator.of(context).push(PageRouteBuilder(
+      pageBuilder: (_, anim, __) => const GameScreen(),
+      transitionsBuilder: (_, anim, __, child) =>
+          FadeTransition(opacity: anim, child: child),
+      transitionDuration: const Duration(milliseconds: 350),
+    ));
   }
 
   @override
@@ -67,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen>
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          // ── Main Content ─────────────────────────────────────────────────
+          // ── Main scrollable content ────────────────────────────────────
           Expanded(
             child: Container(
               decoration: const BoxDecoration(gradient: AppColors.bgGradient),
@@ -75,19 +68,22 @@ class _HomeScreenState extends State<HomeScreen>
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 28),
                       _buildLogo(),
-                      const SizedBox(height: 40),
-                      _buildEmojiShowcase(),
                       const SizedBox(height: 32),
+                      _buildEmojiShowcase(),
+                      const SizedBox(height: 28),
                       _buildHighScore(game),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 36),
                       _buildStartButton(context),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
                       _buildSoundToggle(),
                       const SizedBox(height: 16),
                       _buildFakeStats(),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 36),
+                      // ── "by ChAs" branding ──────────────────────────
+                      _buildByChAs(),
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
@@ -95,11 +91,11 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // ── Banner Ad ────────────────────────────────────────────────────
+          // ── Banner Ad ─────────────────────────────────────────────────
           if (_bannerLoaded && AdService.instance.bannerAd != null)
             Container(
               color: AppColors.background,
-              alignment: Alignment.bottomCenter,
+              alignment: Alignment.center,
               width: AdService.instance.bannerAd!.size.width.toDouble(),
               height: AdService.instance.bannerAd!.size.height.toDouble(),
               child: AdWidget(ad: AdService.instance.bannerAd!),
@@ -109,10 +105,11 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ── Logo ───────────────────────────────────────────────────────────────────
   Widget _buildLogo() {
     return Column(
       children: [
-        // Icon / Logo
+        // Game icon
         Container(
           width: 120,
           height: 120,
@@ -120,9 +117,9 @@ class _HomeScreenState extends State<HomeScreen>
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.4),
-                blurRadius: 32,
-                spreadRadius: 4,
+                color: AppColors.primary.withOpacity(0.45),
+                blurRadius: 36,
+                spreadRadius: 6,
               ),
             ],
           ),
@@ -141,20 +138,20 @@ class _HomeScreenState extends State<HomeScreen>
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .scale(
               begin: const Offset(1.0, 1.0),
-              end: const Offset(1.04, 1.04),
-              duration: 1500.ms,
+              end: const Offset(1.05, 1.05),
+              duration: 1600.ms,
               curve: Curves.easeInOut,
             ),
 
         const SizedBox(height: 20),
 
-        // Title
+        // EMOJI RAIN title
         ShaderMask(
-          shaderCallback: (bounds) => AppColors.goldGradient.createShader(bounds),
+          shaderCallback: (b) => AppColors.goldGradient.createShader(b),
           child: const Text(
             'EMOJI RAIN',
             style: TextStyle(
-              fontSize: 44,
+              fontSize: 46,
               fontWeight: FontWeight.w900,
               color: Colors.white,
               letterSpacing: 2,
@@ -163,56 +160,51 @@ class _HomeScreenState extends State<HomeScreen>
         )
             .animate()
             .fadeIn(duration: 600.ms, delay: 200.ms)
-            .slideY(begin: 0.3, end: 0, duration: 500.ms, curve: Curves.easeOut),
+            .slideY(begin: 0.3, end: 0, duration: 500.ms),
 
         const SizedBox(height: 6),
 
         Text(
-          'FOCUS OR FAIL',
+          'FOCUS  OR  FAIL',
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
             color: AppColors.accent.withOpacity(0.9),
-            letterSpacing: 4,
+            letterSpacing: 5,
           ),
-        )
-            .animate()
-            .fadeIn(duration: 600.ms, delay: 400.ms),
+        ).animate().fadeIn(duration: 600.ms, delay: 400.ms),
       ],
     );
   }
 
+  // ── Emoji Showcase ─────────────────────────────────────────────────────────
   Widget _buildEmojiShowcase() {
-    const emojis = ['❤️', '😊', '🤩', '😱', '💀', '🔥', '😎', '🥳'];
+    const emojis = ['❤️', '😊', '🤩', '😱', '💀', '🔥', '😎', '🥳', '💎', '👻'];
     return SizedBox(
-      height: 70,
+      height: 72,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: emojis.length,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemBuilder: (context, i) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              emojis[i],
-              style: const TextStyle(fontSize: 42),
-            )
-                .animate(
-                  delay: Duration(milliseconds: i * 100),
-                  onPlay: (c) => c.repeat(reverse: true),
-                )
-                .moveY(
-                  begin: 0,
-                  end: -10,
-                  duration: Duration(milliseconds: 800 + i * 80),
-                  curve: Curves.easeInOut,
-                ),
-          );
-        },
+        itemBuilder: (_, i) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          child: Text(emojis[i], style: const TextStyle(fontSize: 40))
+              .animate(
+                delay: Duration(milliseconds: i * 90),
+                onPlay: (c) => c.repeat(reverse: true),
+              )
+              .moveY(
+                begin: 0,
+                end: -12,
+                duration: Duration(milliseconds: 750 + i * 70),
+                curve: Curves.easeInOut,
+              ),
+        ),
       ),
     ).animate().fadeIn(delay: 300.ms, duration: 500.ms);
   }
 
+  // ── High Score ─────────────────────────────────────────────────────────────
   Widget _buildHighScore(GameProvider game) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 32),
@@ -220,10 +212,7 @@ class _HomeScreenState extends State<HomeScreen>
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.primary.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1.5),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -242,53 +231,48 @@ class _HomeScreenState extends State<HomeScreen>
                   letterSpacing: 2,
                 ),
               ),
-              Text(
-                '${game.highScore}',
-                style: AppTextStyles.scoreText,
-              ),
+              Text('${game.highScore}', style: AppTextStyles.scoreText),
             ],
           ),
         ],
       ),
-    ).animate().fadeIn(delay: 500.ms, duration: 500.ms).slideX(begin: -0.3, end: 0);
+    ).animate().fadeIn(delay: 500.ms).slideX(begin: -0.3, end: 0);
   }
 
+  // ── Start Button ───────────────────────────────────────────────────────────
   Widget _buildStartButton(BuildContext context) {
     return AnimatedBuilder(
       animation: _pulseController,
-      builder: (context, child) {
-        final scale = 1.0 + _pulseController.value * 0.03;
-        return Transform.scale(
-          scale: scale,
-          child: child,
-        );
-      },
+      builder: (_, child) => Transform.scale(
+        scale: 1.0 + _pulseController.value * 0.03,
+        child: child,
+      ),
       child: GestureDetector(
         onTap: () => _startGame(context),
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 40),
-          height: 64,
+          margin: const EdgeInsets.symmetric(horizontal: 36),
+          height: 66,
           decoration: BoxDecoration(
             gradient: AppColors.primaryBtnGradient,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.45),
-                blurRadius: 20,
+                color: AppColors.primary.withOpacity(0.50),
+                blurRadius: 24,
                 spreadRadius: 2,
-                offset: const Offset(0, 6),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('🎮', style: TextStyle(fontSize: 26)),
+              Text('🎮', style: TextStyle(fontSize: 28)),
               SizedBox(width: 12),
               Text(
                 'PLAY NOW',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.w900,
                   color: Colors.black,
                   letterSpacing: 1.5,
@@ -306,10 +290,11 @@ class _HomeScreenState extends State<HomeScreen>
         );
   }
 
+  // ── Sound Toggle ───────────────────────────────────────────────────────────
   Widget _buildSoundToggle() {
     return StatefulBuilder(
       builder: (context, setState) {
-        final enabled = AudioService.instance.soundEnabled;
+        final on = AudioService.instance.soundEnabled;
         return GestureDetector(
           onTap: () async {
             await AudioService.instance.toggleSound();
@@ -319,16 +304,16 @@ class _HomeScreenState extends State<HomeScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                enabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                color: enabled ? AppColors.accent : AppColors.textSecondary,
+                on ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                color: on ? AppColors.accent : AppColors.textSecondary,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Text(
-                enabled ? 'Sound ON' : 'Sound OFF',
+                on ? 'Sound ON' : 'Sound OFF',
                 style: TextStyle(
                   fontSize: 13,
-                  color: enabled ? AppColors.accent : AppColors.textSecondary,
+                  color: on ? AppColors.accent : AppColors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -339,6 +324,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ── Fake Stats ─────────────────────────────────────────────────────────────
   Widget _buildFakeStats() {
     return Column(
       children: [
@@ -364,16 +350,51 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Text(emoji, style: const TextStyle(fontSize: 14)),
           const SizedBox(width: 8),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          Text(text, style: AppTextStyles.bodyMedium),
         ],
       ),
+    );
+  }
+
+  // ── By ChAs Branding ───────────────────────────────────────────────────────
+  Widget _buildByChAs() {
+    return Column(
+      children: [
+        Container(
+          height: 1,
+          margin: const EdgeInsets.symmetric(horizontal: 60),
+          color: Colors.white.withOpacity(0.08),
+        ),
+        const SizedBox(height: 14),
+        RichText(
+          textAlign: TextAlign.center,
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: 'by ',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textSecondary.withOpacity(0.7),
+                  letterSpacing: 1,
+                ),
+              ),
+              const TextSpan(
+                text: 'ChAs',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                  letterSpacing: 2,
+                ),
+              ),
+            ],
+          ),
+        )
+            .animate()
+            .fadeIn(delay: 1200.ms, duration: 800.ms)
+            .shimmer(delay: 2000.ms, duration: 2000.ms, color: AppColors.primaryGlow),
+      ],
     );
   }
 }

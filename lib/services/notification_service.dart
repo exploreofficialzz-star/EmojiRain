@@ -85,8 +85,6 @@ class NotificationService {
         _nextInstanceOfTime(20, 0),   // 8:00 PM
         _notifDetails,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (_) {}
@@ -103,8 +101,6 @@ class NotificationService {
         tz.TZDateTime.now(tz.local).add(Duration(hours: hoursLater)),
         _notifDetails,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
       );
     } catch (_) {}
   }

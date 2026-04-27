@@ -9,7 +9,8 @@ import '../widgets/score_hud.dart';
 import 'game_over_screen.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key});
+  final bool isContinue;
+  const GameScreen({super.key, this.isContinue = false});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -28,6 +29,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   void _initGame() {
+    // Don't reset state if we're continuing from a rewarded ad
+    if (widget.isContinue) return;
     final size = MediaQuery.sizeOf(context);
     context.read<GameProvider>().startGame(
       screenWidth: size.width,

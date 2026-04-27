@@ -10,61 +10,78 @@ class EmojiCategory {
   static const String danger  = 'danger';
   static const String nature  = 'nature';
   static const String food    = 'food';
+  static const String money   = 'money';
+  static const String animals = 'animals';
 }
 
 // ─── Emoji Pool ───────────────────────────────────────────────────────────────
 class EmojiPool {
   static const Map<String, List<String>> byCategory = {
-    EmojiCategory.happy:  ['😊', '😄', '😁', '🤩', '😃', '😀', '🥳', '🤗'],
-    EmojiCategory.sad:    ['😢', '😭', '💔', '😞', '😥', '🥺', '😿', '😔'],
-    EmojiCategory.angry:  ['😡', '🤬', '😤', '👿', '🔥', '💢', '😠'],
-    EmojiCategory.scared: ['😱', '😨', '😰', '🙀', '😬', '🫣', '😳'],
-    EmojiCategory.love:   ['❤️', '🥰', '😍', '💕', '💖', '🫶', '💗', '😘'],
-    EmojiCategory.cool:   ['😎', '🤙', '🕶️', '🤘', '💪', '🦸', '🧊'],
-    EmojiCategory.silly:  ['🤪', '😜', '😝', '🤡', '🎭', '🙃', '🤓'],
-    EmojiCategory.danger: ['💀', '☠️', '👻', '🕷️', '🦂', '⚡', '🧨'],
-    EmojiCategory.nature: ['🌈', '⭐', '🌙', '☀️', '🌺', '🍀', '🌊'],
-    EmojiCategory.food:   ['🍕', '🍔', '🍦', '🍩', '🎂', '🍭', '🍓'],
+    EmojiCategory.happy:   ['😊', '😄', '😁', '🤩', '😃', '😀', '🥳', '🤗', '😎', '🙌'],
+    EmojiCategory.sad:     ['😢', '😭', '💔', '😞', '😥', '🥺', '😿', '😔', '😩', '😓'],
+    EmojiCategory.angry:   ['😡', '🤬', '😤', '👿', '🔥', '💢', '😠', '🤯', '👊'],
+    EmojiCategory.scared:  ['😱', '😨', '😰', '🙀', '😬', '🫣', '😳', '😧', '😦'],
+    EmojiCategory.love:    ['❤️', '🥰', '😍', '💕', '💖', '🫶', '💗', '😘', '💝', '💞'],
+    EmojiCategory.cool:    ['😎', '🤙', '🕶️', '🤘', '💪', '🦸', '🧊', '👑', '✌️'],
+    EmojiCategory.silly:   ['🤪', '😜', '😝', '🤡', '🎭', '🙃', '🤓', '🫠', '👅'],
+    EmojiCategory.danger:  ['💀', '☠️', '👻', '🕷️', '🦂', '⚡', '🧨', '💣', '🔪'],
+    EmojiCategory.nature:  ['🌈', '⭐', '🌙', '☀️', '🌺', '🍀', '🌊', '🌸', '🌟', '❄️'],
+    EmojiCategory.food:    ['🍕', '🍔', '🍦', '🍩', '🎂', '🍭', '🍓', '🍜', '🧁', '🌮'],
+    EmojiCategory.money:   ['💰', '💵', '🤑', '💎', '🏆', '🎰', '💸', '🪙'],
+    EmojiCategory.animals: ['🐶', '🐱', '🦊', '🐸', '🦄', '🐼', '🐨', '🦋', '🐬', '🦁'],
   };
 
   static const List<String> allEmojis = [
+    // happy
     '😊', '😄', '😁', '🤩', '😃', '😀', '🥳', '🤗',
-    '😢', '😭', '💔', '😞', '😥', '🥺', '😔',
-    '😡', '🤬', '😤', '👿', '💢', '😠',
-    '😱', '😨', '😰', '😬', '😳',
-    '❤️', '🥰', '😍', '💕', '💖', '🫶', '💗', '😘',
-    '😎', '🤙', '💪',
-    '🤪', '😜', '😝', '🤡', '🙃',
-    '💀', '☠️', '👻',
-    '🌈', '⭐', '🌙', '☀️',
-    '🍕', '🍔', '🍦', '🍩', '🎂',
-    '💩', '🎉', '🦄', '🐸', '🤖',
+    // sad
+    '😢', '😭', '💔', '😞', '😥', '🥺', '😔', '😩',
+    // angry
+    '😡', '🤬', '😤', '👿', '💢', '😠', '🤯',
+    // scared
+    '😱', '😨', '😰', '😬', '😳', '😧',
+    // love
+    '❤️', '🥰', '😍', '💕', '💖', '🫶', '💗', '😘', '💝',
+    // cool
+    '😎', '🤙', '💪', '👑', '✌️',
+    // silly
+    '🤪', '😜', '😝', '🤡', '🙃', '🫠',
+    // danger
+    '💀', '☠️', '👻', '💣', '🔪',
+    // nature
+    '🌈', '⭐', '🌙', '☀️', '🌸', '🌟', '❄️',
+    // food
+    '🍕', '🍔', '🍦', '🍩', '🎂', '🍭', '🌮',
+    // money
+    '💰', '💵', '🤑', '💎', '🏆', '💸',
+    // animals
+    '🐶', '🐱', '🦊', '🐸', '🦄', '🐼', '🦁',
+    // misc
+    '💩', '🎉', '🔮', '🎯', '🧲', '🪄', '🎪',
   ];
-
-  static List<String> get distractors => allEmojis;
 }
 
 // ─── Level Configuration ──────────────────────────────────────────────────────
 enum RuleType {
-  tapSpecific,    // "Tap only X"
-  avoidSpecific,  // "Avoid X" (tap everything else)
-  tapCategory,    // "Tap only [emotion] emojis"
-  avoidCategory,  // "Avoid [emotion] emojis"
+  tapSpecific,
+  avoidSpecific,
+  tapCategory,
+  avoidCategory,
 }
 
 class LevelConfig {
-  final int level;
+  final int    level;
   final String title;
   final String ruleText;
   final String instructionText;
   final RuleType ruleType;
-  final String? targetEmoji;
-  final String? targetCategory;
-  final double baseSpeed;
-  final double spawnInterval;
-  final int targetScore;
-  final int emojiMix;          // how many wrong emojis per correct
-  final double emojiSizeMultiplier;
+  final String?  targetEmoji;
+  final String?  targetCategory;
+  final double   baseSpeed;
+  final double   spawnInterval;
+  final int      targetScore;       // score to clear this level
+  final int      emojiMix;          // distractors per 1 target
+  final double   emojiSizeMultiplier;
 
   const LevelConfig({
     required this.level,
@@ -77,7 +94,7 @@ class LevelConfig {
     required this.baseSpeed,
     required this.spawnInterval,
     required this.targetScore,
-    this.emojiMix = 2,
+    this.emojiMix = 3,
     this.emojiSizeMultiplier = 1.0,
   });
 
@@ -88,29 +105,30 @@ class LevelConfig {
       case RuleType.avoidSpecific:
         return emoji != targetEmoji;
       case RuleType.tapCategory:
-        final list = EmojiPool.byCategory[targetCategory] ?? [];
-        return list.contains(emoji);
+        return (EmojiPool.byCategory[targetCategory] ?? []).contains(emoji);
       case RuleType.avoidCategory:
-        final list = EmojiPool.byCategory[targetCategory] ?? [];
-        return !list.contains(emoji);
+        return !(EmojiPool.byCategory[targetCategory] ?? []).contains(emoji);
     }
   }
 }
 
+// ─── 15 hand-crafted levels — long and progressively brutal ──────────────────
 class LevelData {
   static const List<LevelConfig> levels = [
+    // ── Level 1: Easy intro ──────────────────────────────────────────────────
     LevelConfig(
       level: 1,
-      title: 'Warm Up',
+      title: 'First Drop',
       ruleText: 'Tap only ❤️',
       instructionText: 'TAP ONLY ❤️',
       ruleType: RuleType.tapSpecific,
       targetEmoji: '❤️',
-      baseSpeed: 160,
-      spawnInterval: 1.2,
-      targetScore: 100,
+      baseSpeed: 130,
+      spawnInterval: 0.80,
+      targetScore: 300,
       emojiMix: 2,
     ),
+    // ── Level 2 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 2,
       title: 'Getting Real',
@@ -118,23 +136,25 @@ class LevelData {
       instructionText: 'TAP ONLY 😊',
       ruleType: RuleType.tapSpecific,
       targetEmoji: '😊',
-      baseSpeed: 190,
-      spawnInterval: 1.0,
-      targetScore: 150,
+      baseSpeed: 150,
+      spawnInterval: 0.70,
+      targetScore: 400,
       emojiMix: 3,
     ),
+    // ── Level 3 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 3,
-      title: 'Danger Zone',
-      ruleText: 'AVOID 💀 — Tap the rest!',
+      title: 'Danger Lurks',
+      ruleText: 'AVOID 💀 — tap everything else!',
       instructionText: 'AVOID 💀',
       ruleType: RuleType.avoidSpecific,
       targetEmoji: '💀',
-      baseSpeed: 210,
-      spawnInterval: 0.9,
-      targetScore: 200,
+      baseSpeed: 170,
+      spawnInterval: 0.65,
+      targetScore: 500,
       emojiMix: 3,
     ),
+    // ── Level 4 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 4,
       title: 'Feels Heavy',
@@ -142,109 +162,184 @@ class LevelData {
       instructionText: 'ONLY SAD 😭💔',
       ruleType: RuleType.tapCategory,
       targetCategory: EmojiCategory.sad,
-      baseSpeed: 240,
-      spawnInterval: 0.85,
-      targetScore: 220,
+      baseSpeed: 185,
+      spawnInterval: 0.62,
+      targetScore: 600,
       emojiMix: 3,
     ),
+    // ── Level 5 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 5,
-      title: 'Good Vibes',
+      title: 'Good Vibes Only',
       ruleText: 'Tap only HAPPY emojis 😄',
       instructionText: 'ONLY HAPPY 😄🤩',
       ruleType: RuleType.tapCategory,
       targetCategory: EmojiCategory.happy,
-      baseSpeed: 260,
-      spawnInterval: 0.8,
-      targetScore: 250,
+      baseSpeed: 200,
+      spawnInterval: 0.58,
+      targetScore: 700,
       emojiMix: 4,
     ),
+    // ── Level 6 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 6,
-      title: 'Love Only',
+      title: 'Love Season',
       ruleText: 'Tap only LOVE emojis ❤️',
       instructionText: 'LOVE ONLY 💕🥰',
       ruleType: RuleType.tapCategory,
       targetCategory: EmojiCategory.love,
-      baseSpeed: 280,
-      spawnInterval: 0.75,
-      targetScore: 280,
+      baseSpeed: 215,
+      spawnInterval: 0.55,
+      targetScore: 800,
       emojiMix: 4,
     ),
+    // ── Level 7 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 7,
-      title: 'No Anger',
-      ruleText: 'AVOID angry emojis 😡',
+      title: 'Anger Issues',
+      ruleText: 'AVOID all ANGRY emojis 😡',
       instructionText: 'NO ANGER 😡🤬',
       ruleType: RuleType.avoidCategory,
       targetCategory: EmojiCategory.angry,
-      baseSpeed: 310,
-      spawnInterval: 0.7,
-      targetScore: 300,
+      baseSpeed: 230,
+      spawnInterval: 0.52,
+      targetScore: 900,
       emojiMix: 4,
     ),
+    // ── Level 8 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 8,
-      title: 'Star Power',
+      title: 'Star Hunter',
       ruleText: 'Tap only ⭐',
       instructionText: 'ONLY ⭐',
       ruleType: RuleType.tapSpecific,
       targetEmoji: '⭐',
-      baseSpeed: 340,
-      spawnInterval: 0.65,
-      targetScore: 350,
+      baseSpeed: 248,
+      spawnInterval: 0.48,
+      targetScore: 1000,
       emojiMix: 5,
       emojiSizeMultiplier: 0.9,
     ),
+    // ── Level 9 ─────────────────────────────────────────────────────────────
     LevelConfig(
       level: 9,
-      title: 'Ghost Hunt',
+      title: 'Ghost Protocol',
       ruleText: 'Tap only 👻',
       instructionText: 'GHOST ONLY 👻',
       ruleType: RuleType.tapSpecific,
       targetEmoji: '👻',
-      baseSpeed: 370,
-      spawnInterval: 0.6,
-      targetScore: 400,
+      baseSpeed: 265,
+      spawnInterval: 0.44,
+      targetScore: 1100,
       emojiMix: 5,
-      emojiSizeMultiplier: 0.85,
+      emojiSizeMultiplier: 0.88,
     ),
+    // ── Level 10 ────────────────────────────────────────────────────────────
     LevelConfig(
       level: 10,
-      title: 'CHAOS MODE',
-      ruleText: 'No DANGER emojis! 💀☠️',
+      title: 'Money Mode',
+      ruleText: 'Tap only MONEY emojis 💰',
+      instructionText: 'MONEY ONLY 💰💵🤑',
+      ruleType: RuleType.tapCategory,
+      targetCategory: EmojiCategory.money,
+      baseSpeed: 280,
+      spawnInterval: 0.42,
+      targetScore: 1200,
+      emojiMix: 5,
+      emojiSizeMultiplier: 0.86,
+    ),
+    // ── Level 11 ────────────────────────────────────────────────────────────
+    LevelConfig(
+      level: 11,
+      title: 'No Danger Zone',
+      ruleText: 'AVOID all DANGER emojis 💀☠️',
       instructionText: 'AVOID DANGER 💀☠️👻',
       ruleType: RuleType.avoidCategory,
       targetCategory: EmojiCategory.danger,
-      baseSpeed: 420,
-      spawnInterval: 0.45,
-      targetScore: 500,
+      baseSpeed: 300,
+      spawnInterval: 0.38,
+      targetScore: 1400,
+      emojiMix: 5,
+      emojiSizeMultiplier: 0.84,
+    ),
+    // ── Level 12 ────────────────────────────────────────────────────────────
+    LevelConfig(
+      level: 12,
+      title: 'Animal Kingdom',
+      ruleText: 'Tap only ANIMAL emojis 🦁',
+      instructionText: 'ANIMALS ONLY 🐶🦁🐬',
+      ruleType: RuleType.tapCategory,
+      targetCategory: EmojiCategory.animals,
+      baseSpeed: 320,
+      spawnInterval: 0.34,
+      targetScore: 1600,
       emojiMix: 6,
-      emojiSizeMultiplier: 0.8,
+      emojiSizeMultiplier: 0.82,
+    ),
+    // ── Level 13 ────────────────────────────────────────────────────────────
+    LevelConfig(
+      level: 13,
+      title: 'Nature Lover',
+      ruleText: 'AVOID all FOOD emojis 🍕',
+      instructionText: 'NO FOOD 🍕🍔🍦',
+      ruleType: RuleType.avoidCategory,
+      targetCategory: EmojiCategory.food,
+      baseSpeed: 340,
+      spawnInterval: 0.30,
+      targetScore: 1800,
+      emojiMix: 6,
+      emojiSizeMultiplier: 0.80,
+    ),
+    // ── Level 14 ────────────────────────────────────────────────────────────
+    LevelConfig(
+      level: 14,
+      title: 'Diamond Hands',
+      ruleText: 'Tap only 💎',
+      instructionText: 'ONLY 💎',
+      ruleType: RuleType.tapSpecific,
+      targetEmoji: '💎',
+      baseSpeed: 360,
+      spawnInterval: 0.26,
+      targetScore: 2000,
+      emojiMix: 7,
+      emojiSizeMultiplier: 0.78,
+    ),
+    // ── Level 15 ────────────────────────────────────────────────────────────
+    LevelConfig(
+      level: 15,
+      title: '🔥 CHAOS MODE 🔥',
+      ruleText: 'AVOID SCARED & DANGER emojis!',
+      instructionText: 'NO FEAR NO DANGER 💀😱',
+      ruleType: RuleType.avoidCategory,
+      targetCategory: EmojiCategory.danger,
+      baseSpeed: 390,
+      spawnInterval: 0.22,
+      targetScore: 2500,
+      emojiMix: 7,
+      emojiSizeMultiplier: 0.76,
     ),
   ];
 
   static LevelConfig getLevel(int level) {
     if (level <= 0) return levels.first;
-    if (level > levels.length) {
-      // Beyond defined levels: remix last level, harder
-      final last = levels.last;
-      return LevelConfig(
-        level: level,
-        title: 'INSANE LVL $level',
-        ruleText: last.ruleText,
-        instructionText: last.instructionText,
-        ruleType: last.ruleType,
-        targetEmoji: last.targetEmoji,
-        targetCategory: last.targetCategory,
-        baseSpeed: (last.baseSpeed + (level - levels.length) * 25).clamp(0, 600),
-        spawnInterval: (last.spawnInterval - (level - levels.length) * 0.03).clamp(0.25, 1.5),
-        targetScore: last.targetScore + (level - levels.length) * 80,
-        emojiMix: last.emojiMix + 1,
-        emojiSizeMultiplier: 0.75,
-      );
-    }
-    return levels[level - 1];
+    if (level <= levels.length) return levels[level - 1];
+    // Beyond level 15: procedural insanity
+    final last = levels.last;
+    final extra = level - levels.length;
+    return LevelConfig(
+      level: level,
+      title: 'INSANE LVL $level',
+      ruleText: last.ruleText,
+      instructionText: last.instructionText,
+      ruleType: last.ruleType,
+      targetEmoji: last.targetEmoji,
+      targetCategory: last.targetCategory,
+      baseSpeed: (last.baseSpeed + extra * 18).clamp(0, 520),
+      spawnInterval: (last.spawnInterval - extra * 0.02).clamp(0.12, 1.5),
+      targetScore: last.targetScore + extra * 300,
+      emojiMix: (last.emojiMix + (extra ~/ 3)).clamp(0, 12),
+      emojiSizeMultiplier: 0.74,
+    );
   }
 }
 
@@ -268,7 +363,7 @@ class FailMessages {
     "That... was not it chief 💀",
     "Congratulations on being wrong 🏆",
     "You absolute legend of failure 😂",
-    "The emoji was literally GLOWING and you still missed 🙄",
+    "The emoji was literally falling toward you 🙄",
     "This is why we can't have nice things 😩",
     "I believe in you! (I don't) 💀",
     "Speed: fast. Accuracy: zero 😭",
@@ -276,39 +371,34 @@ class FailMessages {
     "Even the 💩 emoji is judging you",
     "New achievement: Epic Fail 🏅",
     "Blink twice if you need help 👀",
+    "You let it fall off the screen 🤦‍♂️",
+    "It was RIGHT THERE 😱",
+    "You watched it fall and did nothing. Why? 😂",
+    "The emoji escaped because of you 🏃",
+    "Attention span: goldfish 🐟",
   ];
 
   static String getRandom() {
-    messages.shuffle();
-    return messages.first;
+    final copy = List<String>.from(messages)..shuffle();
+    return copy.first;
   }
 
   static String getForWrongTap(String tapped) {
-    if (tapped == '💀' || tapped == '☠️') {
-      return "You literally tapped 💀... tragic 😭";
-    }
-    if (tapped == '💩') {
-      return "You tapped the 💩. No further questions.";
-    }
-    if (tapped == '😡' || tapped == '🤬') {
-      return "Touch the angry emoji once more, I dare you 😡";
-    }
-    if (tapped == '💔') {
-      return "You picked 💔... love no be your thing 😭";
-    }
+    if (tapped == '💀' || tapped == '☠️') return "You literally tapped 💀... tragic 😭";
+    if (tapped == '💩') return "You tapped the 💩. No further questions.";
+    if (tapped == '😡' || tapped == '🤬') return "Touch the angry emoji again I dare you 😡";
+    if (tapped == '💔') return "You picked 💔... love no be your thing 😭";
+    if (tapped == '👻') return "BOO! Wrong ghost 👻 Game over.";
     return getRandom();
   }
-}
 
-// ─── Share Messages ────────────────────────────────────────────────────────────
-class ShareMessages {
-  static String get(int score, int level) {
-    if (score > 500) {
-      return "I scored $score in Emoji Rain! 🔥 Can you beat me? Level $level reached! Download now 🎮";
-    }
-    if (score > 200) {
-      return "I'm getting good at Emoji Rain! $score points 🎯 Try to beat level $level!";
-    }
-    return "Just started playing Emoji Rain 😂 I only got $score but I'm improving! 🎮";
+  static String getForMissedTarget(String missed) {
+    return [
+      "You let $missed escape... unacceptable 😤",
+      "$missed fell off the screen. You froze. Why? 💀",
+      "It was RIGHT THERE 👇 You missed $missed",
+      "The $missed emoji is now living its best life on the floor 😂",
+      "Attention span of a goldfish 🐟 You missed $missed",
+    ][DateTime.now().millisecond % 5];
   }
 }
