@@ -99,6 +99,13 @@ class GameProvider extends ChangeNotifier {
     return 1;
   }
 
+  /// Emoji cap grows with level: 5 at L1 → 28 at L15+
+  /// Formula: 5 + (level-1) * 1.6, clamped to maxEmojisOnScreen
+  int get _maxEmojisThisLevel {
+    final computed = (5 + (_level - 1) * 1.6).round();
+    return computed.clamp(5, GameConstants.maxEmojisOnScreen);
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   GameProvider() { _loadHighScore(); }
 
@@ -247,17 +254,20 @@ class GameProvider extends ChangeNotifier {
   // ── Spawn ─────────────────────────────────────────────────────────────────
   void _maybeSpawn() {
     if (_state != GameState.playing) return;
-    if (_emojis.where((e) => e.isFalling).length >= GameConstants.maxEmojisOnScreen) return;
+    // Use level-based cap — starts small, grows as levels increase
+    if (_emojis.where((e) => e.isFalling).length >= _maxEmojisThisLevel) return;
 
     _spawnAccum += 0.04;
     if (_spawnAccum >= spawnInterval) {
       _spawnAccum = 0.0;
       _spawnEmoji();
-      // Multi-spawn at higher speed stages / levels
-      if (_speedStage >= 1 && _rng.nextBool()) _spawnEmoji();
-      if (_speedStage >= 2 && _rng.nextDouble() < 0.6) _spawnEmoji();
-      if (_speedStage >= 3 && _rng.nextDouble() < 0.4) _spawnEmoji();
-      if (_level >= 8 && _rng.nextDouble() < 0.3) _spawnEmoji();
+      // Multi-spawn only unlocks gradually:
+      //   Stage 1+ AND level 4+: occasional double spawn
+      //   Stage 2+ AND level 7+: more frequent
+      //   Stage 3+ AND level 10+: triple burst
+      if (_speedStage >= 1 && _level >= 4  && _rng.nextBool())           _spawnEmoji();
+      if (_speedStage >= 2 && _level >= 7  && _rng.nextDouble() < 0.55)  _spawnEmoji();
+      if (_speedStage >= 3 && _level >= 10 && _rng.nextDouble() < 0.40)  _spawnEmoji();
     }
   }
 
