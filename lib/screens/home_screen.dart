@@ -77,14 +77,7 @@ class _HomeScreenState extends State<HomeScreen>
                       const SizedBox(height: 36),
                       _buildStartButton(context),
                       const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildSoundToggle(),
-                          const SizedBox(width: 24),
-                          _buildMusicToggle(),
-                        ],
-                      ),
+                      _buildSoundToggle(),
                       const SizedBox(height: 16),
                       _buildFakeStats(),
                       const SizedBox(height: 36),
@@ -321,40 +314,6 @@ class _HomeScreenState extends State<HomeScreen>
                 style: TextStyle(
                   fontSize: 13,
                   color: on ? AppColors.accent : AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ── Music Toggle ────────────────────────────────────────────────────────────
-  Widget _buildMusicToggle() {
-    return StatefulBuilder(
-      builder: (context, setState) {
-        final on = AudioService.instance.musicEnabled;
-        return GestureDetector(
-          onTap: () async {
-            await AudioService.instance.toggleMusic();
-            setState(() {});
-          },
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                on ? Icons.music_note_rounded : Icons.music_off_rounded,
-                color: on ? AppColors.primary : AppColors.textSecondary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                on ? 'Music ON' : 'Music OFF',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: on ? AppColors.primary : AppColors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),

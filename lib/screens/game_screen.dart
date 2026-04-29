@@ -17,24 +17,25 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
-  int  _prevLevel      = 1;
-  bool _showLevelUp    = false;
-
-  final List<_ScoreDisplay> _scoreDisplays = [];
+  int _previousLevel = 1;
+  bool _showLevelUp  = false;
+  final List<_ScoreEventDisplay> _activeScoreEvents = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!widget.isContinue) {
-        final size = MediaQuery.sizeOf(context);
-        context.read<GameProvider>().startGame(
-          screenWidth: size.width,
-          screenHeight: size.height,
-        );
-      }
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initGame());
+  }
+
+  void _initGame() {
+    // Don't reset state if we're continuing from a rewarded ad
+    if (widget.isContinue) return;
+    final size = MediaQuery.sizeOf(context);
+    context.read<GameProvider>().startGame(
+      screenWidth: size.width,
+      screenHeight: size.height,
+    );
   }
 
   @override
@@ -50,48 +51,49 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _checkEvents(GameProvider game) {
-    // Level up
-    if (game.level != _prevLevel) {
-      _prevLevel = game.level;
+  void _checkLevelUp(GameProvider game) {
+    if (game.level != _previousLevel) {
+      _previousLevel = game.level;
       setState(() => _showLevelUp = true);
-      Future.delayed(const Duration(milliseconds: 2400), () {
+      Future.delayed(const Duration(milliseconds: 1800), () {
         if (mounted) setState(() => _showLevelUp = false);
       });
     }
-
-
   }
 
   void _handleScoreEvents(GameProvider game) {
-    final now = DateTime.now();
     for (final ev in game.scoreEvents) {
-      _scoreDisplays.add(_ScoreDisplay(
+      _activeScoreEvents.add(_ScoreEventDisplay(
         event: ev,
-        expiry: now.add(const Duration(milliseconds: 900)),
+        expiry: DateTime.now().add(const Duration(milliseconds: 900)),
       ));
     }
     game.clearScoreEvents();
-    _scoreDisplays.removeWhere((d) => now.isAfter(d.expiry));
+    // Clean expired
+    _activeScoreEvents.removeWhere((e) => DateTime.now().isAfter(e.expiry));
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<GameProvider>(
       builder: (context, game, _) {
-        _checkEvents(game);
+        _checkLevelUp(game);
         _handleScoreEvents(game);
 
-        // Navigate to game over
+        // Route to game over
         if (game.isGameOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && game.isGameOver) {
-              Navigator.of(context).pushReplacement(PageRouteBuilder(
-                pageBuilder: (_, anim, __) => const GameOverScreen(),
-                transitionsBuilder: (_, anim, __, child) =>
-                    FadeTransition(opacity: anim, child: child),
-                transitionDuration: const Duration(milliseconds: 400),
-              ));
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder: (_, anim, __) => const GameOverScreen(),
+                  transitionsBuilder: (_, anim, __, child) => FadeTransition(
+                    opacity: anim,
+                    child: child,
+                  ),
+                  transitionDuration: const Duration(milliseconds: 400),
+                ),
+              );
             }
           });
         }
@@ -100,52 +102,46 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           backgroundColor: AppColors.background,
           body: Stack(
             children: [
-              // ── Background ───────────────────────────────────────────────
+              // ── Background ────────────────────────────────────────────
               _GameBackground(level: game.level),
 
-              // ── Falling emojis ───────────────────────────────────────────
+              // ── Game Field (emojis) ───────────────────────────────────
               ..._buildEmojis(game),
 
-              // ── Score popups ─────────────────────────────────────────────
-              ..._scoreDisplays.map((d) => ScorePopup(
-                key: ValueKey('${d.hashCode}'),
-                points: d.event.points,
-                x: d.event.x,
-                y: d.event.y,
-                isCombo: d.event.isCombo,
-              )),
+              // ── Score Popups ──────────────────────────────────────────
+              ..._buildScorePopups(),
 
-              // ── HUD ───────────────────────────────────────────────────────
+              // ── HUD ───────────────────────────────────────────────────
               SafeArea(
                 child: Column(
                   children: [
                     ScoreHUD(game: game),
-                    const SizedBox(height: 6),
-                    RuleDisplay(level: game.currentLevel, animateIn: _showLevelUp),
-
+                    const SizedBox(height: 8),
+                    RuleDisplay(
+                      level: game.currentLevel,
+                      animateIn: _showLevelUp,
+                    ),
                     const Spacer(),
+                    // Combo badge
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
+                      padding: const EdgeInsets.only(bottom: 20),
                       child: ComboStreakBadge(combo: game.combo),
                     ),
                   ],
                 ),
               ),
 
-              // ── Level Up overlay ─────────────────────────────────────────
+              // ── Level Up Banner ───────────────────────────────────────
               if (_showLevelUp)
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: LevelUpBanner(
-                      level: game.level,
-                      title: game.currentLevel.title,
+                    child: Center(
+                      child: LevelUpBanner(level: game.level),
                     ),
                   ),
                 ),
 
-
-
-              // ── Pause overlay ─────────────────────────────────────────────
+              // ── Pause Overlay ─────────────────────────────────────────
               if (game.state == GameState.paused)
                 _PauseOverlay(game: game),
             ],
@@ -155,12 +151,27 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  List<Widget> _buildEmojis(GameProvider game) => game.emojis.map((e) =>
-      FallingEmojiWidget(
+  List<Widget> _buildEmojis(GameProvider game) {
+    return game.emojis.map((e) {
+      return FallingEmojiWidget(
         key: ValueKey(e.id),
         emoji: e,
         onTap: () => game.onEmojiTapped(e),
-      )).toList();
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildScorePopups() {
+    return _activeScoreEvents.map((display) {
+      return ScorePopup(
+        key: ValueKey(display.hashCode),
+        points: display.event.points,
+        x: display.event.x,
+        y: display.event.y,
+        isCombo: display.event.isCombo,
+      );
+    }).toList();
+  }
 }
 
 // ─── Game Background ──────────────────────────────────────────────────────────
@@ -170,32 +181,48 @@ class _GameBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Gradually more intense background as levels increase
+    final intensity = (level / 10).clamp(0.0, 1.0);
     return Container(
-      decoration: const BoxDecoration(gradient: AppColors.bgGradient),
-      child: CustomPaint(size: Size.infinite, painter: _StarPainter(seed: level)),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0D2B), intensity)!,
+            Color.lerp(const Color(0xFF08081A), const Color(0xFF0D0814), intensity)!,
+          ],
+        ),
+      ),
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _StarfieldPainter(seed: level),
+      ),
     );
   }
 }
 
-class _StarPainter extends CustomPainter {
+class _StarfieldPainter extends CustomPainter {
   final int seed;
-  const _StarPainter({required this.seed});
+  const _StarfieldPainter({required this.seed});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Colors.white.withOpacity(0.22);
-    for (int i = 0; i < 48; i++) {
-      final x = size.width  * ((i * 137 + seed * 11) % 97) / 97;
-      final y = size.height * ((i * 83  + seed * 7)  % 89) / 89;
-      canvas.drawCircle(Offset(x, y), i % 3 == 0 ? 1.5 : 1.0, p);
+    final paint = Paint()..color = Colors.white.withOpacity(0.25);
+    // Deterministic "stars" based on screen size
+    for (int i = 0; i < 40; i++) {
+      final x = (size.width * ((i * 137 + seed * 11) % 97) / 97);
+      final y = (size.height * ((i * 83 + seed * 7) % 89) / 89);
+      final r = (i % 3 == 0) ? 1.5 : 1.0;
+      canvas.drawCircle(Offset(x, y), r, paint);
     }
   }
 
   @override
-  bool shouldRepaint(_StarPainter old) => old.seed != seed;
+  bool shouldRepaint(_StarfieldPainter old) => old.seed != seed;
 }
 
-// ─── Pause Overlay ────────────────────────────────────────────────────────────
+// ─── Pause Overlay ─────────────────────────────────────────────────────────────
 class _PauseOverlay extends StatelessWidget {
   final GameProvider game;
   const _PauseOverlay({required this.game});
@@ -203,7 +230,7 @@ class _PauseOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withOpacity(0.78),
+      color: Colors.black.withOpacity(0.75),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 40),
@@ -218,23 +245,41 @@ class _PauseOverlay extends StatelessWidget {
             children: [
               const Text('⏸️', style: TextStyle(fontSize: 48)),
               const SizedBox(height: 12),
-              const Text('PAUSED', style: TextStyle(
-                fontSize: 28, fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary, letterSpacing: 3,
-              )),
-              const SizedBox(height: 6),
-              Text('Score: ${game.score}  •  Level ${game.level}',
-                  style: AppTextStyles.bodyMedium),
+              const Text(
+                'PAUSED',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  letterSpacing: 3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Score: ${game.score}',
+                style: AppTextStyles.bodyMedium,
+              ),
               const SizedBox(height: 28),
-              _btn('▶️', 'RESUME', AppColors.primaryBtnGradient, Colors.black,
-                  () => game.resumeGame()),
+              _buildBtn(
+                label: 'RESUME',
+                icon: '▶️',
+                gradient: AppColors.primaryBtnGradient,
+                textColor: Colors.black,
+                onTap: () => game.resumeGame(),
+              ),
               const SizedBox(height: 12),
-              _btn('🏠', 'QUIT',
-                  const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
-                  Colors.white, () {
-                game.goHome();
-                Navigator.of(context).popUntil((r) => r.isFirst);
-              }),
+              _buildBtn(
+                label: 'QUIT',
+                icon: '🏠',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)],
+                ),
+                textColor: Colors.white,
+                onTap: () {
+                  game.goHome();
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                },
+              ),
             ],
           ),
         ),
@@ -242,31 +287,46 @@ class _PauseOverlay extends StatelessWidget {
     ).animate().fadeIn(duration: 200.ms);
   }
 
-  Widget _btn(String icon, String label, Gradient gradient, Color textColor, VoidCallback onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          height: 52,
-          decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(16)),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              Text(label, style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w800,
-                color: textColor, letterSpacing: 1,
-              )),
-            ],
-          ),
+  Widget _buildBtn({
+    required String label,
+    required String icon,
+    required Gradient gradient,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(16),
         ),
-      );
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: textColor,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-class _ScoreDisplay {
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+class _ScoreEventDisplay {
   final ScoreEvent event;
-  final DateTime   expiry;
-  _ScoreDisplay({required this.event, required this.expiry});
+  final DateTime expiry;
+  _ScoreEventDisplay({required this.event, required this.expiry});
 }
