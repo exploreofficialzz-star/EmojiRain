@@ -110,6 +110,7 @@ class GameProvider extends ChangeNotifier {
     _currentLevel   = LevelData.getLevel(1);
 
     _startLoop();
+    AudioService.instance.startBgm();
     notifyListeners();
   }
 
@@ -117,6 +118,7 @@ class GameProvider extends ChangeNotifier {
     if (_state != GameState.playing) return;
     _state = GameState.paused;
     _stopTimers();
+    AudioService.instance.pauseBgm();
     notifyListeners();
   }
 
@@ -124,19 +126,36 @@ class GameProvider extends ChangeNotifier {
     if (_state != GameState.paused) return;
     _state = GameState.playing;
     _startLoop();
+    AudioService.instance.resumeBgm();
     notifyListeners();
   }
 
   void retryGame() {
     _stopTimers();
+    AudioService.instance.stopBgm();
     startGame(screenWidth: _screenWidth, screenHeight: _screenHeight);
   }
 
   void goHome() {
     _stopTimers();
+    AudioService.instance.stopBgm();
     _state   = GameState.idle;
     _emojis  = [];
     _scoreEvents = [];
+    notifyListeners();
+  }
+
+  /// ── Rewarded Ad: CONTINUE from exact game state ──────────────────────────
+  /// Score, level, combo are all preserved. Only emojis on screen are cleared
+  /// (they were mid-fall when the ad started) and the loop restarts.
+  void continueAfterRewardedAd() {
+    _emojis       = [];          // clear mid-fall emojis; score/level kept
+    _spawnAccum   = 0.0;
+    _state        = GameState.playing;
+    _showRewarded = false;
+    _startLoop();
+    AudioService.instance.resumeBgm();
+    notifyListeners();
     notifyListeners();
   }
 
@@ -348,6 +367,7 @@ class GameProvider extends ChangeNotifier {
   void _triggerGameOver() {
     _stopTimers();
     _state = GameState.gameOver;
+    AudioService.instance.stopBgm();
     _failCount++;
     _saveHighScore();
 

@@ -93,8 +93,8 @@ class GameConstants {
   static const double speedBase       = 130.0;
   static const double speedMax        = 460.0;
   static const double speedIncrement  = 12.0;
-  // ── Continuous speed growth: +0.9 px/s every second throughout the game
-  static const double speedGrowthRate = 0.9;
+  // ── Continuous speed growth: +5.0 px/s every second throughout the game
+  static const double speedGrowthRate = 5.0;
 
   // ── Spawn — fast and chaotic
   static const double spawnIntervalBase = 0.50;

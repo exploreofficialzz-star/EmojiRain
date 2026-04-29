@@ -8,7 +8,9 @@ class AudioService {
   static final AudioService instance = AudioService._();
 
   final Map<SoundEffect, AudioPlayer> _players = {};
+  final AudioPlayer _bgmPlayer = AudioPlayer();
   bool _soundEnabled = true;
+  bool _bgmPlaying   = false;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -21,7 +23,46 @@ class AudioService {
       await player.setVolume(0.9);
       _players[effect] = player;
     }
+
+    // BGM player — looping, lower volume so SFX cut through
+    await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
+    await _bgmPlayer.setVolume(0.4);
   }
+
+  // ── Background Music ──────────────────────────────────────────────────────
+
+  Future<void> startBgm() async {
+    if (!_soundEnabled || _bgmPlaying) return;
+    try {
+      await _bgmPlayer.play(AssetSource('sounds/bgm.mp3'));
+      _bgmPlaying = true;
+    } catch (_) {}
+  }
+
+  Future<void> pauseBgm() async {
+    if (!_bgmPlaying) return;
+    try {
+      await _bgmPlayer.pause();
+      _bgmPlaying = false;
+    } catch (_) {}
+  }
+
+  Future<void> resumeBgm() async {
+    if (!_soundEnabled || _bgmPlaying) return;
+    try {
+      await _bgmPlayer.resume();
+      _bgmPlaying = true;
+    } catch (_) {}
+  }
+
+  Future<void> stopBgm() async {
+    try {
+      await _bgmPlayer.stop();
+      _bgmPlaying = false;
+    } catch (_) {}
+  }
+
+  // ── Sound Effects ─────────────────────────────────────────────────────────
 
   Future<void> play(SoundEffect effect) async {
     if (!_soundEnabled) return;
@@ -44,18 +85,23 @@ class AudioService {
     }
   }
 
+  // ── Settings ──────────────────────────────────────────────────────────────
+
   bool get soundEnabled => _soundEnabled;
 
   Future<void> toggleSound() async {
     _soundEnabled = !_soundEnabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('sound_enabled', _soundEnabled);
+    if (!_soundEnabled) {
+      await stopBgm();
+    }
   }
 
   void dispose() {
-    for (final p in _players.values) {
-      p.dispose();
-    }
+    for (final p in _players.values) p.dispose();
     _players.clear();
+    _bgmPlayer.dispose();
   }
 }
+
