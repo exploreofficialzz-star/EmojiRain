@@ -149,25 +149,12 @@ class GameProvider extends ChangeNotifier {
   /// Score, level, combo are all preserved. Only emojis on screen are cleared
   /// (they were mid-fall when the ad started) and the loop restarts.
   void continueAfterRewardedAd() {
-    _emojis       = [];          // clear mid-fall emojis; score/level kept
+    _emojis       = [];
     _spawnAccum   = 0.0;
     _state        = GameState.playing;
     _showRewarded = false;
     _startLoop();
     AudioService.instance.resumeBgm();
-    notifyListeners();
-    notifyListeners();
-  }
-
-  /// ── Rewarded Ad: CONTINUE from exact game state ──────────────────────────
-  /// Score, level, combo are all preserved. Only emojis on screen are cleared
-  /// (they were mid-fall when the ad started) and the loop restarts.
-  void continueAfterRewardedAd() {
-    _emojis       = [];          // clear mid-fall emojis; score/level kept
-    _spawnAccum   = 0.0;
-    _state        = GameState.playing;
-    _showRewarded = false;
-    _startLoop();
     notifyListeners();
   }
 
@@ -217,7 +204,6 @@ class GameProvider extends ChangeNotifier {
     if (_spawnAccum >= _currentLevel.spawnInterval) {
       _spawnAccum = 0.0;
       _spawnEmoji();
-      // At higher levels spawn 2–3 at once for extra chaos
       if (_level >= 5 && _rng.nextBool()) _spawnEmoji();
       if (_level >= 10 && _rng.nextDouble() < 0.5) _spawnEmoji();
     }
@@ -225,7 +211,6 @@ class GameProvider extends ChangeNotifier {
 
   void _spawnEmoji() {
     final lvl = _currentLevel;
-    // Ratio: 1 target per emojiMix distractors
     final isTarget = _rng.nextInt(lvl.emojiMix + 1) == 0;
 
     String emoji;
@@ -251,7 +236,6 @@ class GameProvider extends ChangeNotifier {
           category = _catOf(emoji);
       }
     } else {
-      // Distractor
       switch (lvl.ruleType) {
         case RuleType.tapSpecific:
           final pool = List<String>.from(EmojiPool.allEmojis)..remove(lvl.targetEmoji);
@@ -293,7 +277,7 @@ class GameProvider extends ChangeNotifier {
     return 'misc';
   }
 
-  // ── Miss Detection — INSTANT GAME OVER if target falls off screen ─────────
+  // ── Miss Detection ────────────────────────────────────────────────────────
   void _checkMisses() {
     for (final e in _emojis) {
       if (!e.isFalling) continue;
@@ -302,14 +286,12 @@ class GameProvider extends ChangeNotifier {
       e.state = EmojiState.missed;
 
       if (e.isTarget) {
-        // ❌ Target escaped without being tapped → INSTANT GAME OVER
         _failMessage = FailMessages.getForMissedTarget(e.emoji);
         _tappedEmoji = e.emoji;
         AudioService.instance.play(SoundEffect.gameover);
         _triggerGameOver();
-        return; // stop processing — game is over
+        return;
       }
-      // Non-target correctly avoided — no penalty
     }
   }
 
@@ -321,7 +303,6 @@ class GameProvider extends ChangeNotifier {
     emoji.state = EmojiState.tapped;
 
     if (emoji.isTarget) {
-      // ✅ Correct tap
       _combo++;
       if (_combo > _maxCombo) _maxCombo = _combo;
       final pts = 10 * comboMultiplier;
@@ -336,11 +317,9 @@ class GameProvider extends ChangeNotifier {
         _combo >= GameConstants.combo2x ? SoundEffect.combo : SoundEffect.correct,
       );
 
-      // Level up?
       if (_score >= _levelUpThreshold) _levelUp();
 
     } else {
-      // ❌ Wrong tap → INSTANT GAME OVER
       _tappedEmoji = emoji.emoji;
       _failMessage = FailMessages.getForWrongTap(emoji.emoji);
       AudioService.instance.play(SoundEffect.wrong);
@@ -354,7 +333,6 @@ class GameProvider extends ChangeNotifier {
     _level++;
     _currentLevel = LevelData.getLevel(_level);
     _spawnAccum   = 0.0;
-    // Ensure speed never drops below the new level's intended minimum
     if (_currentSpeed < _currentLevel.baseSpeed) {
       _currentSpeed = _currentLevel.baseSpeed.clamp(
         GameConstants.speedBase, GameConstants.speedMax,
@@ -371,10 +349,7 @@ class GameProvider extends ChangeNotifier {
     _failCount++;
     _saveHighScore();
 
-    // ── Aggressive ads: interstitial after EVERY game over ──────────────────
     _showInterstitial = true;
-
-    // ── Rewarded ad offered if player has any score ─────────────────────────
     _showRewarded = _score >= 20;
 
     notifyListeners();
