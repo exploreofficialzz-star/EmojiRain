@@ -18,52 +18,52 @@ class ScoreEvent {
 }
 
 class GameProvider extends ChangeNotifier {
-  GameState       _state    = GameState.idle;
-  List<EmojiItem> _emojis   = [];
-  int    _score             = 0;
-  int    _highScore         = 0;
-  int    _combo             = 0;
-  int    _maxCombo          = 0;
-  int    _level             = 1;
-  int    _failCount         = 0;
-  bool   _showInterstitial  = false;
-  bool   _showRewarded      = false;
-  String _failMessage       = '';
-  String _tappedEmoji       = '';
+  GameState       _state   = GameState.idle;
+  List<EmojiItem> _emojis  = [];
+  int    _score            = 0;
+  int    _highScore        = 0;
+  int    _combo            = 0;
+  int    _maxCombo         = 0;
+  int    _level            = 1;
+  int    _failCount        = 0;
+  bool   _showInterstitial = false;
+  bool   _showRewarded     = false;
+  String _failMessage      = '';
+  String _tappedEmoji      = '';
 
   List<ScoreEvent> _scoreEvents = [];
 
   Timer? _gameTimer;
   Timer? _spawnTimer;
   Timer? _levelTimer;
-  int    _levelSecondsLeft  = 60;
+  int    _levelSecondsLeft = 60;
 
   LevelConfig _currentLevel = LevelData.getLevel(1);
 
-  double _screenWidth   = 390;
-  double _screenHeight  = 844;
-  double _spawnAccum    = 0.0;
-  double _currentSpeed  = GameConstants.speedBase;
+  double _screenWidth  = 390;
+  double _screenHeight = 844;
+  double _spawnAccum   = 0.0;
+  double _currentSpeed = GameConstants.speedBase;
 
   final Random _rng = Random();
 
   // ── Getters ───────────────────────────────────────────────────────────────
-  GameState        get state               => _state;
-  List<EmojiItem>  get emojis              => List.unmodifiable(_emojis);
-  int              get score               => _score;
-  int              get highScore           => _highScore;
-  int              get combo               => _combo;
-  int              get maxCombo            => _maxCombo;
-  int              get level               => _level;
-  int              get levelSecondsLeft    => _levelSecondsLeft;
-  bool             get isPlaying           => _state == GameState.playing;
-  bool             get isGameOver          => _state == GameState.gameOver;
+  GameState        get state                  => _state;
+  List<EmojiItem>  get emojis                 => List.unmodifiable(_emojis);
+  int              get score                  => _score;
+  int              get highScore              => _highScore;
+  int              get combo                  => _combo;
+  int              get maxCombo               => _maxCombo;
+  int              get level                  => _level;
+  int              get levelSecondsLeft       => _levelSecondsLeft;
+  bool             get isPlaying              => _state == GameState.playing;
+  bool             get isGameOver             => _state == GameState.gameOver;
   bool             get shouldShowInterstitial => _showInterstitial;
   bool             get shouldShowRewarded     => _showRewarded;
-  String           get failMessage         => _failMessage;
-  String           get tappedEmoji         => _tappedEmoji;
-  LevelConfig      get currentLevel        => _currentLevel;
-  List<ScoreEvent> get scoreEvents         => List.unmodifiable(_scoreEvents);
+  String           get failMessage            => _failMessage;
+  String           get tappedEmoji            => _tappedEmoji;
+  LevelConfig      get currentLevel           => _currentLevel;
+  List<ScoreEvent> get scoreEvents            => List.unmodifiable(_scoreEvents);
 
   int get comboMultiplier {
     if (_combo >= GameConstants.combo10x) return 10;
@@ -187,17 +187,20 @@ class GameProvider extends ChangeNotifier {
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
+    // ── Grow speed continuously — never resets, never decreases
     _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
         .clamp(GameConstants.speedBase, GameConstants.speedMax);
 
+    // ── Sync ALL falling emojis to current speed so they accelerate live
     for (final e in _emojis) {
-      if (e.isFalling) e.y += e.speed * dt;
+      if (e.isFalling) {
+        e.speed = _currentSpeed;
+        e.y    += e.speed * dt;
+      }
     }
 
     _checkMisses();
-
     _emojis.removeWhere((e) => !e.isFalling && e.y > _screenHeight + e.size * 3);
-
     notifyListeners();
   }
 
@@ -210,8 +213,12 @@ class GameProvider extends ChangeNotifier {
     if (_spawnAccum >= _currentLevel.spawnInterval) {
       _spawnAccum = 0.0;
       _spawnEmoji();
-      if (_level >= 3 && _rng.nextBool()) _spawnEmoji();
-      if (_level >= 7 && _rng.nextDouble() < 0.5) _spawnEmoji();
+      // Progressively more emojis per batch as level increases
+      if (_level >= 2  && _rng.nextBool())           _spawnEmoji(); // 2 at lvl 2
+      if (_level >= 4  && _rng.nextBool())           _spawnEmoji(); // 3 at lvl 4
+      if (_level >= 6  && _rng.nextDouble() < 0.6)  _spawnEmoji(); // 4 at lvl 6
+      if (_level >= 9  && _rng.nextDouble() < 0.5)  _spawnEmoji(); // 5 at lvl 9
+      if (_level >= 12 && _rng.nextDouble() < 0.4)  _spawnEmoji(); // 6 at lvl 12
     }
   }
 
