@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  JAVA_VERSION:    '17'
+  JAVA_VERSION: '17'
 
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
@@ -59,10 +59,10 @@ jobs:
       - name: Decode keystore
         if: github.event_name != 'pull_request'
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_JKS: ${{ secrets.KEY_JKS }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          if [ -n "$KEY_JKS" ]; then
+            echo "$KEY_JKS" | base64 --decode > android/app/release.jks
             echo "STORE_FILE=$(pwd)/android/app/release.jks" >> $GITHUB_ENV
           fi
 
@@ -166,7 +166,7 @@ jobs:
 # ╚══════════════════════════════════════════════════════════════════════════╝
   build-ios:
     name: 🍎 iOS Build
-    runs-on: macos-14          # Apple Silicon runner
+    runs-on: macos-14
 
     steps:
       - name: Checkout repository
@@ -185,11 +185,10 @@ jobs:
       - name: Regenerate iOS project
         run: flutter create . --platforms=ios
 
-      # ── Generate icons — Android only from pubspec; iOS via temp config ───
+      # ── Generate icons ────────────────────────────────────────────────────
       - name: Generate launcher icons
         run: |
           flutter pub run flutter_launcher_icons
-          # Also generate iOS icons now that xcodeproj exists
           cat > /tmp/icons_ios.yaml << 'EOF'
           flutter_launcher_icons:
             ios: true
@@ -210,12 +209,12 @@ jobs:
       - name: Import signing certificate
         if: github.event_name != 'pull_request'
         env:
-          CERT_BASE64:          ${{ secrets.IOS_CERT_BASE64 }}
-          CERT_PASSWORD:        ${{ secrets.IOS_CERT_PASSWORD }}
-          PROVISIONING_BASE64:  ${{ secrets.IOS_PROVISIONING_BASE64 }}
+          CERT_BASE64:         ${{ secrets.IOS_CERT_BASE64 }}
+          CERT_PASSWORD:       ${{ secrets.IOS_CERT_PASSWORD }}
+          PROVISIONING_BASE64: ${{ secrets.IOS_PROVISIONING_BASE64 }}
         run: |
           if [ -n "$CERT_BASE64" ]; then
-            echo "$CERT_BASE64"        | base64 --decode > cert.p12
+            echo "$CERT_BASE64"         | base64 --decode > cert.p12
             echo "$PROVISIONING_BASE64" | base64 --decode > profile.mobileprovision
 
             security create-keychain -p temp_password build.keychain
