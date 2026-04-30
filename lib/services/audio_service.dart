@@ -19,11 +19,12 @@ class AudioService {
 
     // ── Configure global audio context for Android (enables background audio)
     if (Platform.isAndroid) {
+      // BGM holds main audio focus — SFX will duck briefly but never stop it
       await AudioPlayer.global.setAudioContext(
         AudioContext(
           android: AudioContextAndroid(
-            audioFocus: AndroidAudioFocus.gain,
-            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+            usageType: AndroidUsageType.game,
             contentType: AndroidContentType.music,
             isSpeakerphoneOn: false,
           ),
@@ -36,13 +37,38 @@ class AudioService {
       final p = AudioPlayer();
       await p.setReleaseMode(ReleaseMode.stop);
       await p.setVolume(0.85);
+      // SFX: gainTransientMayDuck so they never interrupt BGM
+      if (Platform.isAndroid) {
+        await p.setAudioContext(
+          AudioContext(
+            android: AudioContextAndroid(
+              audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+              usageType: AndroidUsageType.game,
+              contentType: AndroidContentType.sonification,
+              isSpeakerphoneOn: false,
+            ),
+          ),
+        );
+      }
       _sfxPlayers[effect] = p;
     }
 
-    // ── BGM player — created here (after engine ready), looping
+    // ── BGM player — gain focus so it owns the audio session
     _bgmPlayer = AudioPlayer();
     await _bgmPlayer!.setReleaseMode(ReleaseMode.loop);
-    await _bgmPlayer!.setVolume(0.4);
+    await _bgmPlayer!.setVolume(0.45);
+    if (Platform.isAndroid) {
+      await _bgmPlayer!.setAudioContext(
+        AudioContext(
+          android: AudioContextAndroid(
+            audioFocus: AndroidAudioFocus.gain,
+            usageType: AndroidUsageType.media,
+            contentType: AndroidContentType.music,
+            isSpeakerphoneOn: false,
+          ),
+        ),
+      );
+    }
   }
 
   // ── Background Music ──────────────────────────────────────────────────────
