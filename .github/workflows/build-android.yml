@@ -9,7 +9,6 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: 'stable'
   JAVA_VERSION:    '17'
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +37,6 @@ jobs:
       - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -177,7 +175,6 @@ jobs:
       - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
