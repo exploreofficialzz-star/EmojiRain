@@ -115,8 +115,8 @@ class GameConstants {
   // ── Score base per level advance
   static const int scorePerLevel = 300;
 
-  // ── Dense chaos — up to 28 emojis simultaneously
-  static const int maxEmojisOnScreen = 28;
+  // ── Dense chaos — up to 40 emojis simultaneously
+  static const int maxEmojisOnScreen = 40;
 
   // ── Notification IDs
   static const int notifDailyReminder = 1001;

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,8 +8,8 @@ class AudioService {
   AudioService._();
   static final AudioService instance = AudioService._();
 
-  final Map<SoundEffect, AudioPlayer> _players = {};
-  final AudioPlayer _bgmPlayer = AudioPlayer();
+  final Map<SoundEffect, AudioPlayer> _sfxPlayers = {};
+  AudioPlayer? _bgmPlayer;
   bool _soundEnabled = true;
   bool _bgmPlaying   = false;
 
@@ -16,49 +17,76 @@ class AudioService {
     final prefs = await SharedPreferences.getInstance();
     _soundEnabled = prefs.getBool('sound_enabled') ?? true;
 
-    // Pre-load one player per effect for instant playback
-    for (final effect in SoundEffect.values) {
-      final player = AudioPlayer();
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setVolume(0.9);
-      _players[effect] = player;
+    // ── Configure global audio context for Android (enables background audio)
+    if (Platform.isAndroid) {
+      await AudioPlayer.global.setAudioContext(
+        AudioContext(
+          android: AudioContextAndroid(
+            audioFocus: AndroidAudioFocus.gain,
+            usageType: AndroidUsageType.media,
+            contentType: AndroidContentType.music,
+            isSpeakerphoneOn: false,
+          ),
+        ),
+      );
     }
 
-    // BGM player — looping, lower volume so SFX cut through
-    await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
-    await _bgmPlayer.setVolume(0.4);
+    // ── SFX players — one per effect, pre-warmed
+    for (final effect in SoundEffect.values) {
+      final p = AudioPlayer();
+      await p.setReleaseMode(ReleaseMode.stop);
+      await p.setVolume(0.85);
+      _sfxPlayers[effect] = p;
+    }
+
+    // ── BGM player — created here (after engine ready), looping
+    _bgmPlayer = AudioPlayer();
+    await _bgmPlayer!.setReleaseMode(ReleaseMode.loop);
+    await _bgmPlayer!.setVolume(0.4);
   }
 
   // ── Background Music ──────────────────────────────────────────────────────
 
   Future<void> startBgm() async {
-    if (!_soundEnabled || _bgmPlaying) return;
+    if (!_soundEnabled) return;
+    final player = _bgmPlayer;
+    if (player == null) return;
     try {
-      await _bgmPlayer.play(AssetSource('sounds/bgm.mp3'));
       _bgmPlaying = true;
-    } catch (_) {}
+      await player.play(AssetSource('sounds/bgm.mp3'));
+    } catch (_) {
+      _bgmPlaying = false;
+    }
   }
 
   Future<void> pauseBgm() async {
     if (!_bgmPlaying) return;
     try {
-      await _bgmPlayer.pause();
+      await _bgmPlayer?.pause();
       _bgmPlaying = false;
     } catch (_) {}
   }
 
   Future<void> resumeBgm() async {
     if (!_soundEnabled || _bgmPlaying) return;
+    final player = _bgmPlayer;
+    if (player == null) return;
     try {
-      await _bgmPlayer.resume();
+      // resume() only works if still loaded; fall back to play() if not
+      final state = player.state;
+      if (state == PlayerState.paused) {
+        await player.resume();
+      } else {
+        await player.play(AssetSource('sounds/bgm.mp3'));
+      }
       _bgmPlaying = true;
     } catch (_) {}
   }
 
   Future<void> stopBgm() async {
+    _bgmPlaying = false;
     try {
-      await _bgmPlayer.stop();
-      _bgmPlaying = false;
+      await _bgmPlayer?.stop();
     } catch (_) {}
   }
 
@@ -66,7 +94,7 @@ class AudioService {
 
   Future<void> play(SoundEffect effect) async {
     if (!_soundEnabled) return;
-    final player = _players[effect];
+    final player = _sfxPlayers[effect];
     if (player == null) return;
     try {
       await player.stop();
@@ -93,15 +121,14 @@ class AudioService {
     _soundEnabled = !_soundEnabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('sound_enabled', _soundEnabled);
-    if (!_soundEnabled) {
-      await stopBgm();
-    }
+    if (!_soundEnabled) await stopBgm();
   }
 
   void dispose() {
-    for (final p in _players.values) p.dispose();
-    _players.clear();
-    _bgmPlayer.dispose();
+    for (final p in _sfxPlayers.values) p.dispose();
+    _sfxPlayers.clear();
+    _bgmPlayer?.dispose();
+    _bgmPlayer = null;
   }
 }
 
