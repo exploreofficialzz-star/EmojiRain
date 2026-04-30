@@ -8,7 +8,7 @@ class EmojiItem {
   final String category;
   final bool isTarget;       // Should the player tap this?
   final double size;
-  final double speed;        // px/sec
+  double speed;              // px/sec — mutable so it syncs with _currentSpeed
 
   double x;                  // centre x in pixels
   double y;                  // centre y in pixels
@@ -28,9 +28,9 @@ class EmojiItem {
     required this.speed,
     required this.x,
     required this.y,
-    this.state   = EmojiState.falling,
-    this.opacity = 1.0,
-    this.scale   = 1.0,
+    this.state    = EmojiState.falling,
+    this.opacity  = 1.0,
+    this.scale    = 1.0,
     this.rotation = 0.0,
   });
 
@@ -38,7 +38,6 @@ class EmojiItem {
   bool get isTapped  => state == EmojiState.tapped;
   bool get isMissed  => state == EmojiState.missed;
 
-  /// Whether this emoji's centre is within the tap circle of radius [r]
   bool hitTest(double tapX, double tapY, {double r = 40}) {
     final dx = tapX - x;
     final dy = tapY - y;
@@ -54,17 +53,17 @@ class EmojiItem {
     required double speed,
     Random? rng,
   }) {
-    final rand = rng ?? Random();
+    final rand     = rng ?? Random();
     final halfSize = emojiSize / 2 + 10;
     return EmojiItem(
-      id: '${DateTime.now().microsecondsSinceEpoch}_${rand.nextInt(9999)}',
-      emoji: emoji,
+      id:       '${DateTime.now().microsecondsSinceEpoch}_${rand.nextInt(9999)}',
+      emoji:    emoji,
       category: category,
       isTarget: isTarget,
-      size: emojiSize,
-      speed: speed + rand.nextDouble() * 30 - 15, // slight speed variety
-      x: halfSize + rand.nextDouble() * (screenWidth - halfSize * 2),
-      y: -emojiSize,
+      size:     emojiSize,
+      speed:    speed + rand.nextDouble() * 30 - 15,
+      x:        halfSize + rand.nextDouble() * (screenWidth - halfSize * 2),
+      y:        -emojiSize,
       rotation: (rand.nextDouble() - 0.5) * 0.4,
     );
   }
