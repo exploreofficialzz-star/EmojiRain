@@ -89,11 +89,11 @@ class GameConstants {
   static const double emojiSizeSmall = 66.0;
 
   // ── Speed (pixels / second)
-  static const double speedBase       = 150.0;   // start faster
-  static const double speedMax        = 700.0;   // much higher ceiling
+  static const double speedBase       = 150.0;
+  static const double speedMax        = 3000.0;  // never flatlines
   static const double speedIncrement  = 12.0;
-  // ── Continuous speed growth: +15 px/s per second — noticeable from second 1
-  static const double speedGrowthRate = 15.0;
+  // ── +75 px/s per level (~1.25/s × 60s) — smooth gradual ramp forever
+  static const double speedGrowthRate = 1.25;
 
   // ── Spawn — fast and chaotic
   static const double spawnIntervalBase = 0.50;
