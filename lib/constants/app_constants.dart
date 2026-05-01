@@ -66,7 +66,6 @@ class AppTextStyles {
 
 // ─── AdMob Unit IDs ──────────────────────────────────────────────────────────
 class AdIds {
-  // ⚠️  Replace with your real AdMob IDs before publishing.
   static bool get _isAndroid => Platform.isAndroid;
 
   static String get banner => _isAndroid
@@ -90,11 +89,11 @@ class GameConstants {
   static const double emojiSizeSmall = 66.0;
 
   // ── Speed (pixels / second)
-  static const double speedBase       = 130.0;
-  static const double speedMax        = 460.0;
+  static const double speedBase       = 150.0;   // start faster
+  static const double speedMax        = 700.0;   // much higher ceiling
   static const double speedIncrement  = 12.0;
-  // ── Continuous speed growth: +5.0 px/s every second throughout the game
-  static const double speedGrowthRate = 5.0;
+  // ── Continuous speed growth: +15 px/s per second — noticeable from second 1
+  static const double speedGrowthRate = 15.0;
 
   // ── Spawn — fast and chaotic
   static const double spawnIntervalBase = 0.50;
