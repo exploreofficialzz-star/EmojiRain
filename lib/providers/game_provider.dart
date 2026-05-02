@@ -33,6 +33,9 @@ class GameProvider extends ChangeNotifier {
 
   List<ScoreEvent> _scoreEvents = [];
 
+  // ── Frame tick — drives CustomPainter repaint without rebuilding widgets
+  final ValueNotifier<int> frameTick = ValueNotifier(0);
+
   Timer? _gameTimer;
   Timer? _spawnTimer;
   Timer? _levelTimer;
@@ -201,7 +204,9 @@ class GameProvider extends ChangeNotifier {
 
     _checkMisses();
     _emojis.removeWhere((e) => !e.isFalling && e.y > _screenHeight + e.size * 3);
-    notifyListeners();
+
+    // ── Drive canvas repaint without rebuilding the widget tree
+    frameTick.value++;
   }
 
   void _maybeSpawn() {
@@ -213,12 +218,11 @@ class GameProvider extends ChangeNotifier {
     if (_spawnAccum >= _currentLevel.spawnInterval) {
       _spawnAccum = 0.0;
       _spawnEmoji();
-      // Progressively more emojis per batch as level increases
-      if (_level >= 2  && _rng.nextBool())           _spawnEmoji(); // 2 at lvl 2
-      if (_level >= 4  && _rng.nextBool())           _spawnEmoji(); // 3 at lvl 4
-      if (_level >= 6  && _rng.nextDouble() < 0.6)  _spawnEmoji(); // 4 at lvl 6
-      if (_level >= 9  && _rng.nextDouble() < 0.5)  _spawnEmoji(); // 5 at lvl 9
-      if (_level >= 12 && _rng.nextDouble() < 0.4)  _spawnEmoji(); // 6 at lvl 12
+      if (_level >= 2  && _rng.nextBool())           _spawnEmoji();
+      if (_level >= 4  && _rng.nextBool())           _spawnEmoji();
+      if (_level >= 6  && _rng.nextDouble() < 0.6)  _spawnEmoji();
+      if (_level >= 9  && _rng.nextDouble() < 0.5)  _spawnEmoji();
+      if (_level >= 12 && _rng.nextDouble() < 0.4)  _spawnEmoji();
     }
   }
 
@@ -269,17 +273,14 @@ class GameProvider extends ChangeNotifier {
       }
     }
 
-    final size  = GameConstants.emojiSizeBase * lvl.emojiSizeMultiplier;
-    final speed = _currentSpeed;
-
     _emojis.add(EmojiItem.spawn(
-      emoji: emoji,
-      category: category,
-      isTarget: isTarget,
+      emoji:       emoji,
+      category:    category,
+      isTarget:    isTarget,
       screenWidth: _screenWidth,
-      emojiSize: size,
-      speed: speed,
-      rng: _rng,
+      emojiSize:   GameConstants.emojiSizeBase * lvl.emojiSizeMultiplier,
+      speed:       _currentSpeed,
+      rng:         _rng,
     ));
   }
 
@@ -290,14 +291,11 @@ class GameProvider extends ChangeNotifier {
     return 'misc';
   }
 
-  // ── Miss Detection ────────────────────────────────────────────────────────
   void _checkMisses() {
     for (final e in _emojis) {
       if (!e.isFalling) continue;
       if (e.y <= _screenHeight + e.size / 2) continue;
-
       e.state = EmojiState.missed;
-
       if (e.isTarget) {
         _failMessage = FailMessages.getForMissedTarget(e.emoji);
         _tappedEmoji = e.emoji;
@@ -308,7 +306,6 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  // ── Tap Handling ──────────────────────────────────────────────────────────
   void onEmojiTapped(EmojiItem emoji) {
     if (_state != GameState.playing) return;
     if (!emoji.isFalling) return;
@@ -361,14 +358,11 @@ class GameProvider extends ChangeNotifier {
     AudioService.instance.stopBgm();
     _failCount++;
     _saveHighScore();
-
     _showInterstitial = true;
     _showRewarded     = _score >= 20;
-
     notifyListeners();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
   String get fakeStat {
     final pct = max(1, 100 - (_level * 6 + _score ~/ 60)).clamp(1, 96);
     return 'Only $pct% of players survived level $_level';
@@ -381,6 +375,7 @@ class GameProvider extends ChangeNotifier {
   @override
   void dispose() {
     _stopTimers();
+    frameTick.dispose();
     super.dispose();
   }
 }
