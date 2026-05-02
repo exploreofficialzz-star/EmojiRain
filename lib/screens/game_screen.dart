@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
-import '../models/emoji_item.dart';
 import '../providers/game_provider.dart';
+import '../widgets/falling_emoji_widget.dart';
 import '../widgets/rule_display.dart';
 import '../widgets/score_hud.dart';
 import 'game_over_screen.dart';
@@ -50,9 +50,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _checkLevelUp(int level) {
-    if (level != _previousLevel) {
-      _previousLevel = level;
+  void _checkLevelUp(GameProvider game) {
+    if (game.level != _previousLevel) {
+      _previousLevel = game.level;
       setState(() => _showLevelUp = true);
       Future.delayed(const Duration(milliseconds: 1800), () {
         if (mounted) setState(() => _showLevelUp = false);
@@ -73,217 +73,142 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final game = context.read<GameProvider>();
+    final screenSize = MediaQuery.sizeOf(context);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Static background — painted once, never rebuilds
-          const _GameBackground(),
+    return Consumer<GameProvider>(
+      builder: (context, game, _) {
+        _checkLevelUp(game);
+        _handleScoreEvents(game);
 
-          // Emoji canvas — repaints via frameTick, zero widget rebuilds per frame
-          RepaintBoundary(
-            child: _EmojiCanvas(game: game),
-          ),
+        if (game.isGameOver) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && game.isGameOver) {
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder: (_, anim, __) => const GameOverScreen(),
+                  transitionsBuilder: (_, anim, __, child) =>
+                      FadeTransition(opacity: anim, child: child),
+                  transitionDuration: const Duration(milliseconds: 400),
+                ),
+              );
+            }
+          });
+        }
 
-          // Tap interceptor
-          _TapLayer(game: game),
-
-          // Score popups
-          ..._buildScorePopups(game),
-
-          // HUD — Selector means only rebuilds when these values change
-          SafeArea(
-            child: Column(
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: SizedBox.expand(
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
               children: [
-                Selector<GameProvider, (int, int, int, int)>(
-                  selector: (_, g) =>
-                      (g.score, g.combo, g.level, g.levelSecondsLeft),
-                  builder: (_, __, ___) => ScoreHUD(game: game),
-                ),
-                const SizedBox(height: 8),
-                Selector<GameProvider, int>(
-                  selector: (_, g) => g.level,
-                  builder: (_, level, ___) {
-                    _checkLevelUp(level);
-                    return RuleDisplay(
-                      level:     game.currentLevel,
-                      animateIn: _showLevelUp,
-                    );
-                  },
-                ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Selector<GameProvider, int>(
-                    selector: (_, g) => g.combo,
-                    builder: (_, combo, ___) => ComboStreakBadge(combo: combo),
+                _GameBackground(level: game.level),
+                ..._buildEmojis(game, screenSize),
+                ..._buildScorePopups(),
+                SafeArea(
+                  child: Column(
+                    children: [
+                      ScoreHUD(game: game),
+                      const SizedBox(height: 8),
+                      RuleDisplay(
+                        level:     game.currentLevel,
+                        animateIn: _showLevelUp,
+                      ),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: ComboStreakBadge(combo: game.combo),
+                      ),
+                    ],
                   ),
                 ),
+                if (_showLevelUp)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: LevelUpBanner(level: game.level),
+                      ),
+                    ),
+                  ),
+                if (game.state == GameState.paused)
+                  _PauseOverlay(game: game),
               ],
             ),
           ),
-
-          // Level Up banner
-          if (_showLevelUp)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: Selector<GameProvider, int>(
-                    selector: (_, g) => g.level,
-                    builder: (_, level, ___) => LevelUpBanner(level: level),
-                  ),
-                ),
-              ),
-            ),
-
-          // Game over / pause — only rebuilds on state change
-          Selector<GameProvider, GameState>(
-            selector: (_, g) => g.state,
-            builder: (_, state, ___) {
-              if (state == GameState.gameOver) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    Navigator.of(context).pushReplacement(
-                      PageRouteBuilder(
-                        pageBuilder: (_, anim, __) => const GameOverScreen(),
-                        transitionsBuilder: (_, anim, __, child) =>
-                            FadeTransition(opacity: anim, child: child),
-                        transitionDuration: const Duration(milliseconds: 400),
-                      ),
-                    );
-                  }
-                });
-              }
-              if (state == GameState.paused) return _PauseOverlay(game: game);
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  List<Widget> _buildScorePopups(GameProvider game) {
-    _handleScoreEvents(game);
-    return _activeScoreEvents.map((d) => ScorePopup(
-      key:     ValueKey(d.hashCode),
-      points:  d.event.points,
-      x:       d.event.x,
-      y:       d.event.y,
-      isCombo: d.event.isCombo,
+  List<Widget> _buildEmojis(GameProvider game, Size screenSize) {
+    return game.emojis.map((e) {
+      final left = (e.x - e.size / 2).clamp(0.0, screenSize.width  - e.size);
+      final top  = (e.y - e.size / 2).clamp(-e.size, screenSize.height);
+      return Positioned(
+        key:  ValueKey(e.id),
+        left: left,
+        top:  top,
+        child: FallingEmojiWidget(
+          emoji: e,
+          onTap: () => game.onEmojiTapped(e),
+        ),
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildScorePopups() {
+    return _activeScoreEvents.map((display) => ScorePopup(
+      key:     ValueKey(display.hashCode),
+      points:  display.event.points,
+      x:       display.event.x,
+      y:       display.event.y,
+      isCombo: display.event.isCombo,
     )).toList();
   }
 }
 
-// ─── Emoji Canvas ─────────────────────────────────────────────────────────────
-class _EmojiCanvas extends StatelessWidget {
-  final GameProvider game;
-  const _EmojiCanvas({required this.game});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: game.frameTick,
-      builder: (_, __, ___) => CustomPaint(
-        size:    Size.infinite,
-        painter: _EmojiPainter(emojis: game.emojis),
-      ),
-    );
-  }
-}
-
-class _EmojiPainter extends CustomPainter {
-  final List<EmojiItem> emojis;
-  _EmojiPainter({required this.emojis});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final e in emojis) {
-      if (!e.isFalling) continue;
-      final tp = TextPainter(
-        text: TextSpan(
-          text:  e.emoji,
-          style: TextStyle(fontSize: e.size * 0.78, height: 1.0),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-
-      canvas.save();
-      canvas.translate(e.x, e.y);
-      canvas.rotate(e.rotation);
-      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(_EmojiPainter _) => true;
-}
-
-// ─── Tap Layer ────────────────────────────────────────────────────────────────
-class _TapLayer extends StatelessWidget {
-  final GameProvider game;
-  const _TapLayer({required this.game});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (details) {
-        final pos    = details.localPosition;
-        final emojis = game.emojis.toList();
-        for (final e in emojis.reversed) {
-          if (e.isFalling && e.hitTest(pos.dx, pos.dy, r: e.size * 0.55)) {
-            game.onEmojiTapped(e);
-            break;
-          }
-        }
-      },
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-// ─── Static Background ────────────────────────────────────────────────────────
+// ─── Game Background ──────────────────────────────────────────────────────────
 class _GameBackground extends StatelessWidget {
-  const _GameBackground();
+  final int level;
+  const _GameBackground({required this.level});
 
   @override
   Widget build(BuildContext context) {
+    final intensity = (level / 10).clamp(0.0, 1.0);
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin:  Alignment.topCenter,
-          end:    Alignment.bottomCenter,
-          colors: [Color(0xFF0D0D2B), Color(0xFF08081A), Color(0xFF0A0A1F)],
-          stops:  [0.0, 0.5, 1.0],
+          begin: Alignment.topCenter,
+          end:   Alignment.bottomCenter,
+          colors: [
+            Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0D2B), intensity)!,
+            Color.lerp(const Color(0xFF08081A), const Color(0xFF0D0814), intensity)!,
+          ],
         ),
       ),
-      child: const CustomPaint(
+      child: CustomPaint(
         size:    Size.infinite,
-        painter: _StarfieldPainter(),
+        painter: _StarfieldPainter(seed: level),
       ),
     );
   }
 }
 
 class _StarfieldPainter extends CustomPainter {
-  const _StarfieldPainter();
+  final int seed;
+  const _StarfieldPainter({required this.seed});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = Colors.white.withOpacity(0.25);
     for (int i = 0; i < 40; i++) {
-      final x = size.width  * ((i * 137) % 97) / 97;
-      final y = size.height * ((i * 83)  % 89) / 89;
-      canvas.drawCircle(Offset(x, y), i % 3 == 0 ? 1.5 : 1.0, paint);
+      final x = size.width  * ((i * 137 + seed * 11) % 97) / 97;
+      final y = size.height * ((i * 83  + seed * 7)  % 89) / 89;
+      canvas.drawCircle(Offset(x, y), (i % 3 == 0) ? 1.5 : 1.0, paint);
     }
   }
 
   @override
-  bool shouldRepaint(_StarfieldPainter _) => false;
+  bool shouldRepaint(_StarfieldPainter old) => old.seed != seed;
 }
 
 // ─── Pause Overlay ────────────────────────────────────────────────────────────
@@ -380,46 +305,6 @@ class _PauseOverlay extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ─── Score Popup ──────────────────────────────────────────────────────────────
-class ScorePopup extends StatelessWidget {
-  final int    points;
-  final double x;
-  final double y;
-  final bool   isCombo;
-
-  const ScorePopup({
-    super.key,
-    required this.points,
-    required this.x,
-    required this.y,
-    required this.isCombo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: x - 40,
-      top:  y - 50,
-      child: IgnorePointer(
-        child: Text(
-          isCombo ? '+$points 🔥' : '+$points',
-          style: TextStyle(
-            fontSize:   isCombo ? 22 : 18,
-            fontWeight: FontWeight.w900,
-            color: isCombo ? const Color(0xFFFF6F00) : Colors.white,
-            shadows: const [
-              Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1)),
-            ],
-          ),
-        )
-            .animate()
-            .moveY(begin: 0, end: -60, duration: 800.ms, curve: Curves.easeOut)
-            .fadeOut(begin: 1.0, delay: 300.ms, duration: 500.ms),
       ),
     );
   }
