@@ -33,8 +33,7 @@ class GameProvider extends ChangeNotifier {
 
   List<ScoreEvent> _scoreEvents = [];
 
-  // ── Frame tick — drives CustomPainter repaint without rebuilding widgets
-  final ValueNotifier<int> frameTick = ValueNotifier(0);
+  final Stopwatch _stopwatch = Stopwatch();
 
   Timer? _gameTimer;
   Timer? _spawnTimer;
@@ -76,7 +75,6 @@ class GameProvider extends ChangeNotifier {
     return 1;
   }
 
-  // ── Init ──────────────────────────────────────────────────────────────────
   GameProvider() { _loadHighScore(); }
 
   Future<void> _loadHighScore() async {
@@ -166,7 +164,14 @@ class GameProvider extends ChangeNotifier {
   // ── Game Loop ─────────────────────────────────────────────────────────────
   void _startLoop() {
     _stopTimers();
-    _gameTimer  = Timer.periodic(const Duration(milliseconds: 16), (_) => _update(0.016));
+    _stopwatch
+      ..reset()
+      ..start();
+    _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      final ms = _stopwatch.elapsedMilliseconds;
+      _stopwatch.reset();
+      _update((ms / 1000.0).clamp(0.005, 0.05));
+    });
     _spawnTimer = Timer.periodic(const Duration(milliseconds: 40), (_) => _maybeSpawn());
     _levelTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_state != GameState.playing) return;
@@ -181,6 +186,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _stopTimers() {
+    _stopwatch.stop();
     _gameTimer?.cancel();
     _spawnTimer?.cancel();
     _levelTimer?.cancel();
@@ -190,11 +196,9 @@ class GameProvider extends ChangeNotifier {
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
-    // ── Grow speed continuously — never resets, never decreases
     _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
         .clamp(GameConstants.speedBase, GameConstants.speedMax);
 
-    // ── Sync ALL falling emojis to current speed so they accelerate live
     for (final e in _emojis) {
       if (e.isFalling) {
         e.speed = _currentSpeed;
@@ -204,9 +208,7 @@ class GameProvider extends ChangeNotifier {
 
     _checkMisses();
     _emojis.removeWhere((e) => !e.isFalling && e.y > _screenHeight + e.size * 3);
-
-    // ── Drive canvas repaint without rebuilding the widget tree
-    frameTick.value++;
+    notifyListeners();
   }
 
   void _maybeSpawn() {
@@ -375,7 +377,6 @@ class GameProvider extends ChangeNotifier {
   @override
   void dispose() {
     _stopTimers();
-    frameTick.dispose();
     super.dispose();
   }
 }
