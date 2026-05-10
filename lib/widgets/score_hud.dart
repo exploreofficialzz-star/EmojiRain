@@ -106,7 +106,7 @@ class _LivesRow extends StatelessWidget {
             )
                 .animate(key: ValueKey('heart_${i}_$isAlive'))
                 .scale(
-                  begin: const Offset(isAlive ? 1.0 : 1.4, isAlive ? 1.0 : 1.4),
+                  begin: Offset(isAlive ? 1.0 : 1.4, isAlive ? 1.0 : 1.4),
                   end: const Offset(1.0, 1.0),
                   duration: 300.ms,
                   curve: Curves.elasticOut,
