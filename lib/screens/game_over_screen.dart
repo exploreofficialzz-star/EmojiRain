@@ -6,6 +6,9 @@ import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/ad_service.dart';
 import '../services/notification_service.dart';
+import '../services/purchase_service.dart';
+import '../widgets/network_banner.dart';
+import '../widgets/remove_ads_sheet.dart';
 import 'game_screen.dart';
 
 class GameOverScreen extends StatefulWidget {
@@ -16,57 +19,52 @@ class GameOverScreen extends StatefulWidget {
 }
 
 class _GameOverScreenState extends State<GameOverScreen> {
-  bool _bannerLoaded  = false;
-  bool _showingAd     = false;
-  bool _rewardOffered = false;
-  bool _adShown       = false;
+  bool _bannerLoaded = false;
+  bool _showingAd    = false;
 
   @override
   void initState() {
     super.initState();
     _loadBanner();
-    _handleAds();
-    // Schedule comeback notification
+    _handleInterstitial();
     NotificationService.instance.scheduleComeback(hoursLater: 4);
   }
 
   void _loadBanner() {
+    // AdService already gates behind adsRemoved + network internally
     AdService.instance.loadBanner(
-      onLoaded: () => setState(() => _bannerLoaded = true),
+      onLoaded: () {
+        if (mounted) setState(() => _bannerLoaded = true);
+      },
     );
   }
 
-  Future<void> _handleAds() async {
+  Future<void> _handleInterstitial() async {
     final game = context.read<GameProvider>();
+    if (!game.shouldShowInterstitial) return;
 
-    // Brief delay for dramatic effect then show interstitial
+    game.consumeInterstitialFlag();
+
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
 
-    if (game.shouldShowInterstitial) {
-      game.consumeInterstitialFlag();
-      setState(() => _showingAd = true);
-      await AdService.instance.showInterstitial(
-        onComplete: () {
-          if (mounted) setState(() { _showingAd = false; _adShown = true; });
-        },
-      );
-    } else {
-      setState(() => _adShown = true);
-    }
+    setState(() => _showingAd = true);
+    await AdService.instance.showInterstitial(
+      onComplete: () {
+        if (mounted) setState(() => _showingAd = false);
+      },
+    );
   }
 
   void _retry(BuildContext context) {
-    final game = context.read<GameProvider>();
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, anim, __) => const GameScreen(),
+        pageBuilder:       (_, anim, __) => const GameScreen(),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
         transitionDuration: const Duration(milliseconds: 300),
       ),
     );
-    // game.retryGame() is called inside GameScreen.initState via startGame
   }
 
   void _goHome(BuildContext context) {
@@ -74,117 +72,181 @@ class _GameOverScreenState extends State<GameOverScreen> {
     Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
-  Future<void> _watchAdForContinue(BuildContext context) async {
-    final game = context.read<GameProvider>();
-    final shown = await AdService.instance.showRewarded(
-      onRewarded: () {
-        game.continueAfterRewardedAd();
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (_, anim, __) => const GameScreen(isContinue: true),
-              transitionsBuilder: (_, anim, __, child) =>
-                  FadeTransition(opacity: anim, child: child),
-              transitionDuration: const Duration(milliseconds: 300),
-            ),
-          );
-        }
-      },
-      onSkipped: () {
-        if (mounted) setState(() {});
-      },
-    );
-    if (!shown && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No ad available. Try again shortly.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final game = context.watch<GameProvider>();
+    final game     = context.watch<GameProvider>();
+    final purchase = context.watch<PurchaseService>();
     final isNewHigh = game.score >= game.highScore && game.score > 0;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: Container(
-              decoration: const BoxDecoration(gradient: AppColors.bgGradient),
-              child: SafeArea(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 32),
+          Column(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration:
+                      const BoxDecoration(gradient: AppColors.bgGradient),
+                  child: SafeArea(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 32),
 
-                        // ── Fail Emoji ──────────────────────────────────
-                        _buildFailEmoji(game.tappedEmoji),
+                            // ── Fail emoji ──────────────────────────────
+                            _buildFailEmoji(game.tappedEmoji),
+                            const SizedBox(height: 20),
 
-                        const SizedBox(height: 20),
+                            // ── Title ────────────────────────────────────
+                            _buildTitle(isNewHigh),
+                            const SizedBox(height: 16),
 
-                        // ── Game Over Title ─────────────────────────────
-                        _buildTitle(isNewHigh),
+                            // ── Fail message ─────────────────────────────
+                            _buildFailMessage(game.failMessage),
+                            const SizedBox(height: 28),
 
-                        const SizedBox(height: 16),
+                            // ── Score card ───────────────────────────────
+                            _buildScoreCard(game, isNewHigh),
+                            const SizedBox(height: 24),
 
-                        // ── Fail Message ────────────────────────────────
-                        _buildFailMessage(game.failMessage),
+                            // ── Remove Ads banner ────────────────────────
+                            if (!purchase.adsRemoved) ...[
+                              _buildRemoveAdsBanner(context),
+                              const SizedBox(height: 16),
+                            ],
 
-                        const SizedBox(height: 28),
+                            // ── Active status if purchased ───────────────
+                            if (purchase.adsRemoved) ...[
+                              _buildAdsRemovedStatus(purchase),
+                              const SizedBox(height: 16),
+                            ],
 
-                        // ── Score Card ──────────────────────────────────
-                        _buildScoreCard(game, isNewHigh),
+                            // ── Retry ─────────────────────────────────────
+                            _buildRetryButton(context),
+                            const SizedBox(height: 12),
 
-                        const SizedBox(height: 24),
+                            // ── Home ──────────────────────────────────────
+                            _buildHomeButton(context),
+                            const SizedBox(height: 16),
 
-                        // ── Watch Ad to Continue ────────────────────────
-                        if (game.shouldShowRewarded && !_rewardOffered) ...[
-                          _buildRewardedButton(context),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // ── Retry ───────────────────────────────────────
-                        _buildRetryButton(context),
-
-                        const SizedBox(height: 12),
-
-                        // ── Home ────────────────────────────────────────
-                        _buildHomeButton(context),
-
-                        const SizedBox(height: 16),
-
-                        // ── Fake Stats ──────────────────────────────────
-                        _buildFakeStats(game),
-
-                        const SizedBox(height: 32),
-                      ],
+                            // ── Fake stat ──────────────────────────────────
+                            _buildFakeStat(game),
+                            const SizedBox(height: 32),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+
+              // ── Banner Ad ─────────────────────────────────────────────
+              if (_bannerLoaded &&
+                  AdService.instance.bannerAd != null &&
+                  !purchase.adsRemoved)
+                Container(
+                  color:     AppColors.background,
+                  alignment: Alignment.center,
+                  width: AdService.instance.bannerAd!.size.width.toDouble(),
+                  height: AdService.instance.bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: AdService.instance.bannerAd!),
+                ),
+            ],
           ),
 
-          // ── Banner Ad ──────────────────────────────────────────────────
-          if (_bannerLoaded && AdService.instance.bannerAd != null)
-            Container(
-              color: AppColors.background,
-              width: AdService.instance.bannerAd!.size.width.toDouble(),
-              height: AdService.instance.bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: AdService.instance.bannerAd!),
-            ),
+          // ── Network banner (floats at top) ─────────────────────────────
+          const NetworkBanner(),
         ],
       ),
     );
   }
 
+  // ── Remove Ads promo banner ───────────────────────────────────────────────
+  Widget _buildRemoveAdsBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () => showRemoveAdsSheet(context),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: AppColors.primary.withOpacity(0.35), width: 1.2),
+        ),
+        child: Row(
+          children: [
+            const Text('🚫📺', style: TextStyle(fontSize: 24)),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Remove Ads',
+                    style: TextStyle(
+                      fontSize:   14,
+                      fontWeight: FontWeight.w800,
+                      color:      AppColors.primary,
+                    ),
+                  ),
+                  Text(
+                    'From \$0.99/day — play without interruptions',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:    AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.primary,
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    )
+        .animate()
+        .fadeIn(delay: 700.ms, duration: 400.ms)
+        .shimmer(
+            delay:    1200.ms,
+            duration: 2000.ms,
+            color:    AppColors.primary.withOpacity(0.25));
+  }
+
+  Widget _buildAdsRemovedStatus(PurchaseService purchase) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.success.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: AppColors.success.withOpacity(0.30), width: 1),
+      ),
+      child: Row(
+        children: [
+          const Text('✅', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Text(
+            purchase.statusLabel,
+            style: const TextStyle(
+              fontSize:   13,
+              fontWeight: FontWeight.w700,
+              color:      AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 700.ms);
+  }
+
+  // ── Standard widgets ──────────────────────────────────────────────────────
   Widget _buildFailEmoji(String emoji) {
     return Text(
       emoji.isEmpty ? '💀' : emoji,
@@ -193,7 +255,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
         .animate()
         .scale(
           begin: const Offset(0.3, 0.3),
-          end: const Offset(1.0, 1.0),
+          end:   const Offset(1.0, 1.0),
           duration: 600.ms,
           curve: Curves.elasticOut,
         )
@@ -201,25 +263,22 @@ class _GameOverScreenState extends State<GameOverScreen> {
   }
 
   Widget _buildTitle(bool isNewHigh) {
-    return Column(
-      children: [
-        ShaderMask(
-          shaderCallback: (bounds) => (isNewHigh
-                  ? const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFF8C00)])
-                  : const LinearGradient(
-                      colors: [Color(0xFFFF4081), Color(0xFFFF1744)]))
-              .createShader(bounds),
-          child: Text(
-            isNewHigh ? 'NEW RECORD! 🏆' : 'GAME OVER',
-            style: const TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: 1.5,
-            ),
-          ),
+    return ShaderMask(
+      shaderCallback: (bounds) => (isNewHigh
+              ? const LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFFF8C00)])
+              : const LinearGradient(
+                  colors: [Color(0xFFFF4081), Color(0xFFFF1744)]))
+          .createShader(bounds),
+      child: Text(
+        isNewHigh ? 'NEW RECORD! 🏆' : 'GAME OVER',
+        style: const TextStyle(
+          fontSize:      36,
+          fontWeight:    FontWeight.w900,
+          color:         Colors.white,
+          letterSpacing: 1.5,
         ),
-      ],
+      ),
     )
         .animate()
         .fadeIn(delay: 200.ms, duration: 400.ms)
@@ -230,17 +289,17 @@ class _GameOverScreenState extends State<GameOverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
+        color:        AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border:       Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: Text(
         message,
         style: const TextStyle(
-          fontSize: 16,
+          fontSize:   16,
           fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-          height: 1.4,
+          color:      AppColors.textPrimary,
+          height:     1.4,
         ),
         textAlign: TextAlign.center,
       ),
@@ -254,7 +313,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
+        color:        AppColors.surfaceCard,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: isNewHigh
@@ -265,7 +324,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
         boxShadow: isNewHigh
             ? [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.2),
+                  color:      AppColors.primary.withOpacity(0.2),
                   blurRadius: 20,
                   spreadRadius: 4,
                 ),
@@ -274,18 +333,15 @@ class _GameOverScreenState extends State<GameOverScreen> {
       ),
       child: Column(
         children: [
-          // Main score
-          _scoreRow('SCORE', '${game.score}',
-              style: AppTextStyles.scoreText),
+          _scoreRow('SCORE', '${game.score}', style: AppTextStyles.scoreText),
           const Divider(color: Colors.white12, height: 24),
-          // Sub stats
           Row(
             children: [
-              Expanded(child: _miniStat('LEVEL', '${game.level}', '🎯')),
+              Expanded(child: _miniStat('LEVEL',  '${game.level}',    '🎯')),
               Container(width: 1, height: 40, color: Colors.white12),
-              Expanded(child: _miniStat('BEST', '${game.highScore}', '🏆')),
+              Expanded(child: _miniStat('BEST',   '${game.highScore}','🏆')),
               Container(width: 1, height: 40, color: Colors.white12),
-              Expanded(child: _miniStat('COMBO', '×${game.maxCombo}', '🔥')),
+              Expanded(child: _miniStat('COMBO',  '×${game.maxCombo}','🔥')),
             ],
           ),
         ],
@@ -295,7 +351,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
         .fadeIn(delay: 500.ms, duration: 400.ms)
         .scale(
           begin: const Offset(0.9, 0.9),
-          end: const Offset(1, 1),
+          end:   const Offset(1.0, 1.0),
           duration: 400.ms,
         );
   }
@@ -306,9 +362,9 @@ class _GameOverScreenState extends State<GameOverScreen> {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textSecondary,
+            fontSize:      11,
+            fontWeight:    FontWeight.w700,
+            color:         AppColors.textSecondary,
             letterSpacing: 2,
           ),
         ),
@@ -326,16 +382,16 @@ class _GameOverScreenState extends State<GameOverScreen> {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 18,
+            fontSize:   18,
             fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
+            color:      AppColors.textPrimary,
           ),
         ),
         Text(
           label,
           style: const TextStyle(
-            fontSize: 10,
-            color: AppColors.textSecondary,
+            fontSize:      10,
+            color:         AppColors.textSecondary,
             letterSpacing: 1,
           ),
         ),
@@ -343,67 +399,20 @@ class _GameOverScreenState extends State<GameOverScreen> {
     );
   }
 
-  Widget _buildRewardedButton(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        setState(() => _rewardOffered = true);
-        _watchAdForContinue(context);
-      },
-      child: Container(
-        width: double.infinity,
-        height: 54,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.accent.withOpacity(0.6), width: 1.5),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('📺', style: TextStyle(fontSize: 20)),
-            SizedBox(width: 10),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'WATCH AD TO CONTINUE',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accent,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                Text(
-                  'Keep your score + 1 life',
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 700.ms)
-        .shimmer(delay: 1000.ms, duration: 1500.ms, color: AppColors.accent.withOpacity(0.4));
-  }
-
   Widget _buildRetryButton(BuildContext context) {
     return GestureDetector(
       onTap: () => _retry(context),
       child: Container(
-        width: double.infinity,
+        width:  double.infinity,
         height: 58,
         decoration: BoxDecoration(
-          gradient: AppColors.primaryBtnGradient,
+          gradient:     AppColors.primaryBtnGradient,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withOpacity(0.4),
+              color:      AppColors.primary.withOpacity(0.4),
               blurRadius: 16,
-              offset: const Offset(0, 6),
+              offset:     const Offset(0, 6),
             ),
           ],
         ),
@@ -415,9 +424,9 @@ class _GameOverScreenState extends State<GameOverScreen> {
             Text(
               'TRY AGAIN',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.black,
+                fontSize:      18,
+                fontWeight:    FontWeight.w900,
+                color:         Colors.black,
                 letterSpacing: 1.5,
               ),
             ),
@@ -429,7 +438,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
         .fadeIn(delay: 800.ms, duration: 400.ms)
         .scale(
           begin: const Offset(0.8, 0.8),
-          end: const Offset(1, 1),
+          end:   const Offset(1.0, 1.0),
           duration: 400.ms,
           curve: Curves.elasticOut,
         );
@@ -439,12 +448,12 @@ class _GameOverScreenState extends State<GameOverScreen> {
     return GestureDetector(
       onTap: () => _goHome(context),
       child: Container(
-        width: double.infinity,
+        width:  double.infinity,
         height: 48,
         decoration: BoxDecoration(
-          color: AppColors.surfaceCard,
+          color:        AppColors.surfaceCard,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.15)),
+          border:       Border.all(color: Colors.white.withOpacity(0.15)),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -454,9 +463,9 @@ class _GameOverScreenState extends State<GameOverScreen> {
             Text(
               'HOME',
               style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
+                fontSize:      15,
+                fontWeight:    FontWeight.w700,
+                color:         AppColors.textSecondary,
                 letterSpacing: 1,
               ),
             ),
@@ -466,24 +475,23 @@ class _GameOverScreenState extends State<GameOverScreen> {
     ).animate().fadeIn(delay: 900.ms);
   }
 
-  Widget _buildFakeStats(GameProvider game) {
+  Widget _buildFakeStat(GameProvider game) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.5),
+        color:        AppColors.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border:       Border.all(color: Colors.white.withOpacity(0.06)),
       ),
       child: Text(
         game.fakeStat,
         style: const TextStyle(
-          fontSize: 13,
-          color: AppColors.textSecondary,
+          fontSize:   13,
+          color:      AppColors.textSecondary,
           fontWeight: FontWeight.w500,
         ),
         textAlign: TextAlign.center,
       ),
     ).animate().fadeIn(delay: 1000.ms);
   }
-
 }

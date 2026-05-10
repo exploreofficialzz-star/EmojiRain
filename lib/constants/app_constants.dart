@@ -17,6 +17,7 @@ class AppColors {
   static const Color textSecondary = Color(0xFFB0BEC5);
   static const Color heartRed      = Color(0xFFFF4081);
   static const Color comboOrange   = Color(0xFFFF6F00);
+  static const Color slowMoBlue    = Color(0xFF29B6F6);
 
   static const LinearGradient bgGradient = LinearGradient(
     begin: Alignment.topCenter,
@@ -65,6 +66,7 @@ class AppTextStyles {
 }
 
 // ─── AdMob Unit IDs ──────────────────────────────────────────────────────────
+// TODO: Replace with your real AdMob IDs before publishing
 class AdIds {
   static bool get _isAndroid => Platform.isAndroid;
 
@@ -81,26 +83,61 @@ class AdIds {
       : 'ca-app-pub-3940256099942544/1712485313';
 }
 
+// ─── In-App Purchase Product IDs ─────────────────────────────────────────────
+// Create these exact IDs in:
+//   Google Play Console → Monetize → In-app products (Consumable)
+//   App Store Connect   → Features → In-App Purchases (Consumable)
+class IAPIds {
+  static const String noAdsDay   = 'emoji_rain_no_ads_day';   // $0.99
+  static const String noAdsWeek  = 'emoji_rain_no_ads_week';  // $2.99
+  static const String noAdsMonth = 'emoji_rain_no_ads_month'; // $8.99
+
+  static const Set<String> all = {noAdsDay, noAdsWeek, noAdsMonth};
+
+  static const Map<String, Duration> durations = {
+    noAdsDay:   Duration(days: 1),
+    noAdsWeek:  Duration(days: 7),
+    noAdsMonth: Duration(days: 30),
+  };
+
+  static const Map<String, String> displayPrices = {
+    noAdsDay:   '\$0.99',
+    noAdsWeek:  '\$2.99',
+    noAdsMonth: '\$8.99',
+  };
+
+  static const Map<String, String> displayLabels = {
+    noAdsDay:   '1 Day',
+    noAdsWeek:  '1 Week',
+    noAdsMonth: '1 Month',
+  };
+}
+
 // ─── Game Constants ───────────────────────────────────────────────────────────
 class GameConstants {
-  // ── Emoji sizing — BIG, impactful, tappable
+  // ── Emoji sizing
   static const double emojiSizeBase  = 82.0;
   static const double emojiSizeLarge = 96.0;
   static const double emojiSizeSmall = 66.0;
 
   // ── Speed (pixels / second)
   static const double speedBase       = 150.0;
-  static const double speedMax        = 3000.0;  // never flatlines
+  static const double speedMax        = 3000.0;
   static const double speedIncrement  = 12.0;
-  // ── +75 px/s per level (~1.25/s × 60s) — smooth gradual ramp forever
   static const double speedGrowthRate = 1.25;
 
-  // ── Spawn — fast and chaotic
+  // ── Spawn
   static const double spawnIntervalBase = 0.50;
   static const double spawnIntervalMin  = 0.16;
 
-  // ── NO lives. Wrong tap OR missing a target = INSTANT GAME OVER.
-  static const int maxLives = 1;
+  // ── Wrong Tap Lives — player gets 3 chances per session
+  // Each wrong tap shows a rewarded ad offer instead of instant game over.
+  static const int maxWrongTaps = 3;
+
+  // ── Slow Mo (rewarded ad power-up)
+  static const int    slowMoSeconds     = 10;   // how long slow mo lasts
+  static const double slowMoFactor      = 0.30; // speed reduced to 30%
+  static const int    maxSlowMoPerSession = 2;  // times player can activate
 
   // ── Combo thresholds
   static const int combo2x  = 5;
@@ -108,7 +145,7 @@ class GameConstants {
   static const int combo5x  = 25;
   static const int combo10x = 50;
 
-  // ── Interstitial after EVERY game over
+  // ── Interstitial — after every game over (gated by PurchaseService)
   static const int adEveryNFails = 1;
 
   // ── Score base per level advance

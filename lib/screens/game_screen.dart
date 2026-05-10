@@ -3,9 +3,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
+import '../services/ad_service.dart';
+import '../services/network_service.dart';
 import '../widgets/falling_emoji_widget.dart';
+import '../widgets/network_banner.dart';
 import '../widgets/rule_display.dart';
 import '../widgets/score_hud.dart';
+import '../widgets/wrong_tap_overlay.dart';
 import 'game_over_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -32,9 +36,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (widget.isContinue) return;
     final size = MediaQuery.sizeOf(context);
     context.read<GameProvider>().startGame(
-      screenWidth:  size.width,
-      screenHeight: size.height,
-    );
+          screenWidth: size.width,
+          screenHeight: size.height,
+        );
   }
 
   @override
@@ -71,6 +75,64 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _activeScoreEvents.removeWhere((e) => DateTime.now().isAfter(e.expiry));
   }
 
+  // ── Slow Mo — watch rewarded ad ───────────────────────────────────────────
+  Future<void> _activateSlowMo(GameProvider game) async {
+    // Block if offline
+    final blocked = !NetworkAwareAction.run(
+      context: context,
+      action: () {},
+      offlineOverrideMessage:
+          'Connect to the internet to watch an ad for Slow-Mo.',
+    );
+    if (blocked) return;
+
+    if (!AdService.instance.rewardedReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Ad not ready yet. Try again in a moment.'),
+            backgroundColor: AppColors.surfaceCard,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(12),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Pause game while ad shows
+    game.pauseGame();
+
+    await AdService.instance.showRewarded(
+      onRewarded: () {
+        game.activateSlowMo();
+        game.resumeGame();
+      },
+      onSkipped: () {
+        game.resumeGame();
+      },
+      onUnavailable: () {
+        game.resumeGame();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Ad unavailable. Try again shortly.'),
+              backgroundColor: AppColors.surfaceCard,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              margin: const EdgeInsets.all(12),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
@@ -80,12 +142,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _checkLevelUp(game);
         _handleScoreEvents(game);
 
+        // Navigate to GameOverScreen when game ends
         if (game.isGameOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && game.isGameOver) {
               Navigator.of(context).pushReplacement(
                 PageRouteBuilder(
-                  pageBuilder: (_, anim, __) => const GameOverScreen(),
+                  pageBuilder:       (_, anim, __) => const GameOverScreen(),
                   transitionsBuilder: (_, anim, __, child) =>
                       FadeTransition(opacity: anim, child: child),
                   transitionDuration: const Duration(milliseconds: 400),
@@ -101,9 +164,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             child: Stack(
               clipBehavior: Clip.hardEdge,
               children: [
+                // ── Background ──────────────────────────────────────────
                 _GameBackground(level: game.level),
+
+                // ── Falling emojis ──────────────────────────────────────
                 ..._buildEmojis(game, screenSize),
+
+                // ── Score popups ────────────────────────────────────────
                 ..._buildScorePopups(),
+
+                // ── HUD ─────────────────────────────────────────────────
                 SafeArea(
                   child: Column(
                     children: [
@@ -121,16 +191,39 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
+
+                // ── Level Up Banner ─────────────────────────────────────
                 if (_showLevelUp)
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: Center(
-                        child: LevelUpBanner(level: game.level),
-                      ),
+                      child: Center(child: LevelUpBanner(level: game.level)),
                     ),
                   ),
+
+                // ── Pause Overlay ───────────────────────────────────────
                 if (game.state == GameState.paused)
                   _PauseOverlay(game: game),
+
+                // ── Wrong Tap Overlay ───────────────────────────────────
+                // Shows when player taps wrong emoji.
+                // Offers rewarded ad to continue (up to 3 times per session).
+                if (game.isWrongTap)
+                  const Positioned.fill(child: WrongTapOverlay()),
+
+                // ── Slow Mo Button ──────────────────────────────────────
+                // Floating button — visible during gameplay only.
+                if (game.isPlaying && !game.slowMoActive)
+                  Positioned(
+                    bottom: 88,
+                    right: 16,
+                    child: _SlowMoButton(
+                      usesLeft: game.slowMoUsesLeft,
+                      onTap:    () => _activateSlowMo(game),
+                    ),
+                  ),
+
+                // ── Network Banner ──────────────────────────────────────
+                const NetworkBanner(),
               ],
             ),
           ),
@@ -156,17 +249,90 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   List<Widget> _buildScorePopups() {
-    return _activeScoreEvents.map((display) => ScorePopup(
-      key:     ValueKey(display.hashCode),
-      points:  display.event.points,
-      x:       display.event.x,
-      y:       display.event.y,
-      isCombo: display.event.isCombo,
-    )).toList();
+    return _activeScoreEvents
+        .map((display) => ScorePopup(
+              key:     ValueKey(display.hashCode),
+              points:  display.event.points,
+              x:       display.event.x,
+              y:       display.event.y,
+              isCombo: display.event.isCombo,
+            ))
+        .toList();
   }
 }
 
-// ─── Game Background ──────────────────────────────────────────────────────────
+// ── Slow Mo floating button ───────────────────────────────────────────────────
+class _SlowMoButton extends StatelessWidget {
+  final int          usesLeft;
+  final VoidCallback onTap;
+
+  const _SlowMoButton({required this.usesLeft, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (usesLeft <= 0) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: AppColors.slowMoBlue.withOpacity(0.15),
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: AppColors.slowMoBlue.withOpacity(0.6), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.slowMoBlue.withOpacity(0.25),
+              blurRadius: 16,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Text('🐢', style: TextStyle(fontSize: 28)),
+            // Uses-left badge
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppColors.slowMoBlue,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 1.2),
+                ),
+                child: Center(
+                  child: Text(
+                    '$usesLeft',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    )
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .scale(
+          begin: const Offset(1.0, 1.0),
+          end: const Offset(1.06, 1.06),
+          duration: 1400.ms,
+          curve: Curves.easeInOut,
+        );
+  }
+}
+
+// ── Game Background ───────────────────────────────────────────────────────────
 class _GameBackground extends StatelessWidget {
   final int level;
   const _GameBackground({required this.level});
@@ -211,7 +377,7 @@ class _StarfieldPainter extends CustomPainter {
   bool shouldRepaint(_StarfieldPainter old) => old.seed != seed;
 }
 
-// ─── Pause Overlay ────────────────────────────────────────────────────────────
+// ── Pause Overlay ─────────────────────────────────────────────────────────────
 class _PauseOverlay extends StatelessWidget {
   final GameProvider game;
   const _PauseOverlay({required this.game});
@@ -249,17 +415,18 @@ class _PauseOverlay extends StatelessWidget {
               Text('Score: ${game.score}', style: AppTextStyles.bodyMedium),
               const SizedBox(height: 28),
               _buildBtn(
-                label: 'RESUME', icon: '▶️',
+                label:     'RESUME',
+                icon:      '▶️',
                 gradient:  AppColors.primaryBtnGradient,
                 textColor: Colors.black,
-                onTap: () => game.resumeGame(),
+                onTap:     () => game.resumeGame(),
               ),
               const SizedBox(height: 12),
               _buildBtn(
-                label: 'QUIT', icon: '🏠',
+                label: 'QUIT',
+                icon:  '🏠',
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)],
-                ),
+                    colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
                 textColor: Colors.white,
                 onTap: () {
                   game.goHome();
@@ -310,7 +477,7 @@ class _PauseOverlay extends StatelessWidget {
   }
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// ── Internal helpers ──────────────────────────────────────────────────────────
 class _ScoreEventDisplay {
   final ScoreEvent event;
   final DateTime   expiry;

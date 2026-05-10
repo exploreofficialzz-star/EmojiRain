@@ -16,6 +16,12 @@ dependencies:
   # Ads
   google_mobile_ads: ^5.1.0
 
+  # ── NEW: In-App Purchases ─────────────────────────────────────────────────
+  in_app_purchase: ^3.2.0
+
+  # Network awareness
+  connectivity_plus: ^6.0.3
+
   # Notifications
   flutter_local_notifications: ^17.2.2
 
@@ -42,7 +48,7 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  ios: false        # iOS xcodeproj is not committed; icons are set via the iOS CI step
+  ios: false
   image_path: "assets/images/icon.png"
   min_sdk_android: 21
   adaptive_icon_background: "#0a0a1a"
