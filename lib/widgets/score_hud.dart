@@ -92,33 +92,11 @@ class _LivesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!game.slowMoActive) return const SizedBox.shrink();
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Hearts
-        ...List.generate(GameConstants.maxWrongTaps, (i) {
-          final isAlive = i < game.continuesLeft;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              isAlive ? '❤️' : '🖤',
-              style: const TextStyle(fontSize: 16),
-            )
-                .animate(key: ValueKey('heart_${i}_$isAlive'))
-                .scale(
-                  begin: Offset(isAlive ? 1.0 : 1.4, isAlive ? 1.0 : 1.4),
-                  end: const Offset(1.0, 1.0),
-                  duration: 300.ms,
-                  curve: Curves.elasticOut,
-                ),
-          );
-        }),
-
-        // Slow Mo active indicator
-        if (game.slowMoActive) ...[
-          const SizedBox(width: 10),
-          _SlowMoIndicator(secondsLeft: game.slowMoSecondsLeft),
-        ],
+        _SlowMoIndicator(secondsLeft: game.slowMoSecondsLeft),
       ],
     );
   }
