@@ -15,17 +15,15 @@ class AdService {
   BannerAd? get bannerAd => _bannerLoaded ? _bannerAd : null;
 
   void loadBanner({AdSize size = AdSize.banner, VoidCallback? onLoaded}) {
-    // Skip loading if ads are removed or device is offline
     if (PurchaseService.instance.adsRemoved) return;
-    if (NetworkService.instance.isOffline)   return;
 
     _bannerAd?.dispose();
     _bannerLoaded = false;
 
     _bannerAd = BannerAd(
       adUnitId: AdIds.banner,
-      size: size,
-      request: const AdRequest(),
+      size:     size,
+      request:  const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
           _bannerLoaded = true;
@@ -34,10 +32,8 @@ class AdService {
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           _bannerLoaded = false;
-          // Retry after 20s only if still online and ads not removed
           Future.delayed(const Duration(seconds: 20), () {
-            if (!PurchaseService.instance.adsRemoved &&
-                NetworkService.instance.isOnline) {
+            if (!PurchaseService.instance.adsRemoved) {
               loadBanner(onLoaded: onLoaded);
             }
           });
@@ -54,29 +50,35 @@ class AdService {
 
   // ── Interstitial ──────────────────────────────────────────────────────────
   InterstitialAd? _interstitialAd;
-  bool            _interstitialReady = false;
+  bool            _interstitialReady  = false;
+  bool            _interstitialLoading = false;
 
   bool get interstitialReady => _interstitialReady;
 
+  /// Always pre-load the next interstitial. No network gate — AdMob handles
+  /// connection failures internally and calls onAdFailedToLoad.
   void loadInterstitial() {
     if (PurchaseService.instance.adsRemoved) return;
-    if (NetworkService.instance.isOffline)   return;
+    if (_interstitialLoading) return;
 
-    _interstitialReady = false;
+    _interstitialReady   = false;
+    _interstitialLoading = true;
 
     InterstitialAd.load(
       adUnitId: AdIds.interstitial,
-      request: const AdRequest(),
+      request:  const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
-          _interstitialAd    = ad;
-          _interstitialReady = true;
+          _interstitialAd      = ad;
+          _interstitialReady   = true;
+          _interstitialLoading = false;
+
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (a) {
               a.dispose();
               _interstitialAd    = null;
               _interstitialReady = false;
-              loadInterstitial();
+              loadInterstitial(); // pre-load next one immediately
             },
             onAdFailedToShowFullScreenContent: (a, _) {
               a.dispose();
@@ -86,32 +88,34 @@ class AdService {
             },
           );
         },
-        onAdFailedToLoad: (_) {
-          _interstitialReady = false;
-          Future.delayed(const Duration(seconds: 15), () {
-            if (!PurchaseService.instance.adsRemoved &&
-                NetworkService.instance.isOnline) {
-              loadInterstitial();
-            }
-          });
+        onAdFailedToLoad: (error) {
+          _interstitialReady   = false;
+          _interstitialLoading = false;
+          // Retry after 15s
+          Future.delayed(const Duration(seconds: 15), loadInterstitial);
         },
       ),
     );
   }
 
+  /// Shows the interstitial. If the ad isn't ready yet, waits up to 3 seconds
+  /// for it to finish loading before giving up — fixing the "not showing" issue.
   Future<void> showInterstitial({VoidCallback? onComplete}) async {
-    // Skip entirely if ads are removed — call completion immediately
+    // Skip if user purchased Remove Ads
     if (PurchaseService.instance.adsRemoved) {
       onComplete?.call();
       return;
     }
 
-    // Skip if offline — don't block the user
-    if (NetworkService.instance.isOffline) {
-      onComplete?.call();
-      return;
+    // Wait up to 3 seconds if the ad is still loading
+    if (!_interstitialReady) {
+      for (int i = 0; i < 6; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_interstitialReady) break;
+      }
     }
 
+    // Still not ready — don't block the user, continue
     if (!_interstitialReady || _interstitialAd == null) {
       onComplete?.call();
       return;
@@ -133,54 +137,54 @@ class AdService {
         onComplete?.call();
       },
     );
+
     await _interstitialAd!.show();
   }
 
   // ── Rewarded ──────────────────────────────────────────────────────────────
-  // NOTE: Rewarded ads are ALWAYS available regardless of Remove Ads purchase.
-  // They are gameplay mechanics (wrong tap continues, slow mo) — not just ads.
-  // The Remove Ads purchase only removes passive ads (banner + interstitial).
+  // Rewarded ads are ALWAYS active regardless of Remove Ads purchase.
+  // They are gameplay mechanics (slow mo) — not passive interruptions.
   RewardedAd? _rewardedAd;
-  bool        _rewardedReady = false;
+  bool        _rewardedReady   = false;
+  bool        _rewardedLoading = false;
 
   bool get rewardedReady => _rewardedReady;
 
   void loadRewarded() {
-    // Always attempt to load rewarded — it's a gameplay feature
-    if (NetworkService.instance.isOffline) return;
-
-    _rewardedReady = false;
+    if (_rewardedLoading) return;
+    _rewardedReady   = false;
+    _rewardedLoading = true;
 
     RewardedAd.load(
       adUnitId: AdIds.rewarded,
-      request: const AdRequest(),
+      request:  const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _rewardedAd    = ad;
-          _rewardedReady = true;
+          _rewardedAd     = ad;
+          _rewardedReady  = true;
+          _rewardedLoading = false;
         },
         onAdFailedToLoad: (_) {
-          _rewardedReady = false;
-          Future.delayed(const Duration(seconds: 15), () {
-            if (NetworkService.instance.isOnline) loadRewarded();
-          });
+          _rewardedReady   = false;
+          _rewardedLoading = false;
+          Future.delayed(const Duration(seconds: 15), loadRewarded);
         },
       ),
     );
   }
 
-  /// Shows a rewarded ad.
-  /// Returns true  → ad was shown.
-  /// Returns false → ad unavailable (offline or not loaded).
+  /// Returns true if ad was shown, false if unavailable.
   Future<bool> showRewarded({
     required VoidCallback onRewarded,
     VoidCallback? onSkipped,
     VoidCallback? onUnavailable,
   }) async {
-    // Rewarded is always shown regardless of adsRemoved status
-    if (NetworkService.instance.isOffline) {
-      onUnavailable?.call();
-      return false;
+    // Wait up to 3 seconds if still loading
+    if (!_rewardedReady) {
+      for (int i = 0; i < 6; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_rewardedReady) break;
+      }
     }
 
     if (!_rewardedReady || _rewardedAd == null) {
@@ -193,15 +197,15 @@ class AdService {
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        _rewardedAd    = null;
-        _rewardedReady = false;
+        _rewardedAd     = null;
+        _rewardedReady  = false;
         loadRewarded();
         if (!rewarded) onSkipped?.call();
       },
       onAdFailedToShowFullScreenContent: (ad, _) {
         ad.dispose();
-        _rewardedAd    = null;
-        _rewardedReady = false;
+        _rewardedAd     = null;
+        _rewardedReady  = false;
         loadRewarded();
         onUnavailable?.call();
       },
