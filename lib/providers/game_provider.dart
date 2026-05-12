@@ -1,11 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../constants/emoji_data.dart';
 import '../constants/app_constants.dart';
+import '../constants/emoji_data.dart';
 import '../models/emoji_item.dart';
 import '../services/audio_service.dart';
-import 'dart:async';
 
 enum GameState { idle, playing, paused, gameOver }
 
@@ -18,31 +18,33 @@ class ScoreEvent {
 }
 
 class GameProvider extends ChangeNotifier {
-  GameState       _state            = GameState.idle;
-  List<EmojiItem> _emojis           = [];
-  int    _score                     = 0;
-  int    _highScore                 = 0;
-  int    _combo                     = 0;
-  int    _maxCombo                  = 0;
-  int    _level                     = 1;
-  int    _failCount                 = 0;
-  bool   _showInterstitial          = false;
-  String _failMessage               = '';
-  String _tappedEmoji               = '';
-  List<ScoreEvent> _scoreEvents     = [];
-
-  final Stopwatch _stopwatch = Stopwatch();
-  Timer? _gameTimer;
-  Timer? _spawnTimer;
-  Timer? _levelTimer;
+  // ── Core ──────────────────────────────────────────────────────────────────
+  GameState        _state        = GameState.idle;
+  List<EmojiItem>  _emojis       = [];
+  List<ScoreEvent> _scoreEvents  = [];
+  int    _score            = 0;
+  int    _highScore        = 0;
+  int    _combo            = 0;
+  int    _maxCombo         = 0;
+  int    _level            = 1;
+  int    _failCount        = 0;
   int    _levelSecondsLeft = 60;
+  bool   _showInterstitial = false;
+  bool   _showRewarded     = false;
+  String _failMessage      = '';
+  String _tappedEmoji      = '';
 
   LevelConfig _currentLevel = LevelData.getLevel(1);
   double _screenWidth       = 390;
   double _screenHeight      = 844;
   double _spawnAccum        = 0.0;
   double _currentSpeed      = GameConstants.speedBase;
-  final Random _rng         = Random();
+  final  Random _rng        = Random();
+
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _gameTimer;
+  Timer? _spawnTimer;
+  Timer? _levelTimer;
 
   // ── Slow Mo ───────────────────────────────────────────────────────────────
   bool   _slowMoActive      = false;
@@ -53,6 +55,7 @@ class GameProvider extends ChangeNotifier {
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
   List<EmojiItem>  get emojis                 => List.unmodifiable(_emojis);
+  List<ScoreEvent> get scoreEvents            => List.unmodifiable(_scoreEvents);
   int              get score                  => _score;
   int              get highScore              => _highScore;
   int              get combo                  => _combo;
@@ -63,15 +66,16 @@ class GameProvider extends ChangeNotifier {
   bool             get isPaused               => _state == GameState.paused;
   bool             get isGameOver             => _state == GameState.gameOver;
   bool             get shouldShowInterstitial => _showInterstitial;
+  bool             get shouldShowRewarded     => _showRewarded;
   String           get failMessage            => _failMessage;
   String           get tappedEmoji            => _tappedEmoji;
   LevelConfig      get currentLevel           => _currentLevel;
-  List<ScoreEvent> get scoreEvents            => List.unmodifiable(_scoreEvents);
   bool             get slowMoActive           => _slowMoActive;
   int              get slowMoSecondsLeft      => _slowMoSecondsLeft;
   int              get slowMoUsesLeft         => _slowMoUsesLeft;
   bool             get canActivateSlowMo      =>
       _slowMoUsesLeft > 0 && !_slowMoActive && _state == GameState.playing;
+  bool             get isNewHighScore         => _score > 0 && _score >= _highScore;
 
   int get comboMultiplier {
     if (_combo >= GameConstants.combo10x) return 10;
@@ -81,23 +85,28 @@ class GameProvider extends ChangeNotifier {
     return 1;
   }
 
+  String get fakeStat {
+    final pct = max(1, 100 - (_level * 6 + _score ~/ 60)).clamp(1, 96);
+    return 'Only $pct% of players survived level $_level';
+  }
+
   GameProvider() { _loadHighScore(); }
 
+  // ── Persistence ───────────────────────────────────────────────────────────
   Future<void> _loadHighScore() async {
     final prefs = await SharedPreferences.getInstance();
-    _highScore = prefs.getInt('high_score') ?? 0;
+    _highScore  = prefs.getInt('high_score') ?? 0;
     notifyListeners();
   }
 
   Future<void> _saveHighScore() async {
+    if (_score <= _highScore) return;
+    _highScore = _score;
     final prefs = await SharedPreferences.getInstance();
-    if (_score > _highScore) {
-      _highScore = _score;
-      await prefs.setInt('high_score', _highScore);
-    }
+    await prefs.setInt('high_score', _highScore);
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  // ── Public API ────────────────────────────────────────────────────────────
   void startGame({double? screenWidth, double? screenHeight}) {
     if (screenWidth  != null) _screenWidth  = screenWidth;
     if (screenHeight != null) _screenHeight = screenHeight;
@@ -113,6 +122,7 @@ class GameProvider extends ChangeNotifier {
     _currentSpeed     = GameConstants.speedBase;
     _levelSecondsLeft = 60;
     _showInterstitial = false;
+    _showRewarded     = false;
     _currentLevel     = LevelData.getLevel(1);
     _failMessage      = '';
     _tappedEmoji      = '';
@@ -131,7 +141,7 @@ class GameProvider extends ChangeNotifier {
     if (_state != GameState.playing) return;
     _state = GameState.paused;
     _stopTimers();
-    _slowMoTimer?.cancel(); // pause slow mo countdown too
+    _slowMoTimer?.cancel();
     AudioService.instance.pauseBgm();
     notifyListeners();
   }
@@ -146,15 +156,13 @@ class GameProvider extends ChangeNotifier {
   }
 
   void retryGame() {
-    _stopTimers();
-    _slowMoTimer?.cancel();
+    _stopAllTimers();
     AudioService.instance.stopBgm();
     startGame(screenWidth: _screenWidth, screenHeight: _screenHeight);
   }
 
   void goHome() {
-    _stopTimers();
-    _slowMoTimer?.cancel();
+    _stopAllTimers();
     AudioService.instance.stopBgm();
     _state       = GameState.idle;
     _emojis      = [];
@@ -167,14 +175,35 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called after player watches full rewarded ad on game-over screen.
+  /// Keeps current score/level, clears emojis and resumes play.
+  void continueAfterRewardedAd() {
+    _emojis.clear();
+    _scoreEvents.clear();
+    _spawnAccum       = 0;
+    _showRewarded     = false;
+    _showInterstitial = false;
+    _slowMoActive     = false;
+    _slowMoSecondsLeft = 0;
+    _slowMoUsesLeft   = GameConstants.maxSlowMoPerSession;
+    _slowMoTimer?.cancel();
+    _slowMoTimer      = null;
+    _state            = GameState.playing;
+    _startLoop();
+    AudioService.instance.startBgm();
+    notifyListeners();
+  }
+
+  void clearScoreEvents() => _scoreEvents.clear();
+
   // ── Slow Mo ───────────────────────────────────────────────────────────────
   void activateSlowMo() {
     if (!canActivateSlowMo) return;
     _slowMoUsesLeft--;
     _slowMoActive      = true;
     _slowMoSecondsLeft = GameConstants.slowMoSeconds;
-    final slowSpeed    = _currentSpeed * GameConstants.slowMoFactor;
-    for (final e in _emojis) { if (e.isFalling) e.speed = slowSpeed; }
+    final slow = _currentSpeed * GameConstants.slowMoFactor;
+    for (final e in _emojis) { if (e.isFalling) e.speed = slow; }
     _restartSlowMoTimer();
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();
@@ -185,11 +214,7 @@ class GameProvider extends ChangeNotifier {
     _slowMoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!_slowMoActive || _state != GameState.playing) return;
       _slowMoSecondsLeft--;
-      if (_slowMoSecondsLeft <= 0) {
-        _endSlowMo();
-      } else {
-        notifyListeners();
-      }
+      _slowMoSecondsLeft <= 0 ? _endSlowMo() : notifyListeners();
     });
   }
 
@@ -214,8 +239,7 @@ class GameProvider extends ChangeNotifier {
     });
 
     _spawnTimer = Timer.periodic(
-      const Duration(milliseconds: 40), (_) => _maybeSpawn(),
-    );
+        const Duration(milliseconds: 40), (_) => _maybeSpawn());
 
     _levelTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_state != GameState.playing) return;
@@ -237,18 +261,24 @@ class GameProvider extends ChangeNotifier {
     _gameTimer = _spawnTimer = _levelTimer = null;
   }
 
+  void _stopAllTimers() {
+    _stopTimers();
+    _slowMoTimer?.cancel();
+    _slowMoTimer = null;
+  }
+
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
     _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
         .clamp(GameConstants.speedBase, GameConstants.speedMax);
 
-    final effectiveSpeed = _slowMoActive
+    final speed = _slowMoActive
         ? _currentSpeed * GameConstants.slowMoFactor
         : _currentSpeed;
 
     for (final e in _emojis) {
-      if (e.isFalling) { e.speed = effectiveSpeed; e.y += e.speed * dt; }
+      if (e.isFalling) { e.speed = speed; e.y += speed * dt; }
     }
 
     _checkMisses();
@@ -258,19 +288,17 @@ class GameProvider extends ChangeNotifier {
 
   void _maybeSpawn() {
     if (_state != GameState.playing) return;
-    final fallingCount = _emojis.where((e) => e.isFalling).length;
-    if (fallingCount >= GameConstants.maxEmojisOnScreen) return;
+    if (_emojis.where((e) => e.isFalling).length >= GameConstants.maxEmojisOnScreen) return;
 
     _spawnAccum += 0.04;
-    if (_spawnAccum >= _currentLevel.spawnInterval) {
-      _spawnAccum = 0.0;
-      _spawnEmoji();
-      if (_level >= 2  && _rng.nextBool())         _spawnEmoji();
-      if (_level >= 4  && _rng.nextBool())         _spawnEmoji();
-      if (_level >= 6  && _rng.nextDouble() < 0.6) _spawnEmoji();
-      if (_level >= 9  && _rng.nextDouble() < 0.5) _spawnEmoji();
-      if (_level >= 12 && _rng.nextDouble() < 0.4) _spawnEmoji();
-    }
+    if (_spawnAccum < _currentLevel.spawnInterval) return;
+    _spawnAccum = 0.0;
+    _spawnEmoji();
+    if (_level >= 2  && _rng.nextBool())         _spawnEmoji();
+    if (_level >= 4  && _rng.nextBool())         _spawnEmoji();
+    if (_level >= 6  && _rng.nextDouble() < 0.6) _spawnEmoji();
+    if (_level >= 9  && _rng.nextDouble() < 0.5) _spawnEmoji();
+    if (_level >= 12 && _rng.nextDouble() < 0.4) _spawnEmoji();
   }
 
   void _spawnEmoji() {
@@ -283,56 +311,52 @@ class GameProvider extends ChangeNotifier {
         case RuleType.tapSpecific:
           emoji = lvl.targetEmoji!; category = _catOf(emoji);
         case RuleType.avoidSpecific:
-          final pool = List<String>.from(EmojiPool.allEmojis)..remove(lvl.targetEmoji);
-          emoji = pool[_rng.nextInt(pool.length)]; category = _catOf(emoji);
+          final p = List<String>.from(EmojiPool.allEmojis)..remove(lvl.targetEmoji);
+          emoji = p[_rng.nextInt(p.length)]; category = _catOf(emoji);
         case RuleType.tapCategory:
-          final pool = EmojiPool.byCategory[lvl.targetCategory] ?? EmojiPool.allEmojis;
-          emoji = pool[_rng.nextInt(pool.length)]; category = lvl.targetCategory!;
+          final p = EmojiPool.byCategory[lvl.targetCategory] ?? EmojiPool.allEmojis;
+          emoji = p[_rng.nextInt(p.length)]; category = lvl.targetCategory!;
         case RuleType.avoidCategory:
-          final avoid = EmojiPool.byCategory[lvl.targetCategory] ?? [];
-          final pool  = EmojiPool.allEmojis.where((e) => !avoid.contains(e)).toList();
-          emoji = pool.isEmpty ? '😊' : pool[_rng.nextInt(pool.length)]; category = _catOf(emoji);
+          final av = EmojiPool.byCategory[lvl.targetCategory] ?? [];
+          final p  = EmojiPool.allEmojis.where((e) => !av.contains(e)).toList();
+          emoji = p.isEmpty ? '😊' : p[_rng.nextInt(p.length)]; category = _catOf(emoji);
       }
     } else {
       switch (lvl.ruleType) {
         case RuleType.tapSpecific:
-          final pool = List<String>.from(EmojiPool.allEmojis)..remove(lvl.targetEmoji);
-          emoji = pool[_rng.nextInt(pool.length)]; category = _catOf(emoji);
+          final p = List<String>.from(EmojiPool.allEmojis)..remove(lvl.targetEmoji);
+          emoji = p[_rng.nextInt(p.length)]; category = _catOf(emoji);
         case RuleType.avoidSpecific:
           emoji = lvl.targetEmoji!; category = _catOf(emoji);
         case RuleType.tapCategory:
-          final avoid = EmojiPool.byCategory[lvl.targetCategory] ?? [];
-          final pool  = EmojiPool.allEmojis.where((e) => !avoid.contains(e)).toList();
-          emoji = pool.isEmpty ? '💀' : pool[_rng.nextInt(pool.length)]; category = _catOf(emoji);
+          final av = EmojiPool.byCategory[lvl.targetCategory] ?? [];
+          final p  = EmojiPool.allEmojis.where((e) => !av.contains(e)).toList();
+          emoji = p.isEmpty ? '💀' : p[_rng.nextInt(p.length)]; category = _catOf(emoji);
         case RuleType.avoidCategory:
-          final pool = EmojiPool.byCategory[lvl.targetCategory] ?? EmojiPool.allEmojis;
-          emoji = pool[_rng.nextInt(pool.length)]; category = lvl.targetCategory!;
+          final p = EmojiPool.byCategory[lvl.targetCategory] ?? EmojiPool.allEmojis;
+          emoji = p[_rng.nextInt(p.length)]; category = lvl.targetCategory!;
       }
     }
-
-    final effectiveSpeed = _slowMoActive
-        ? _currentSpeed * GameConstants.slowMoFactor
-        : _currentSpeed;
 
     _emojis.add(EmojiItem.spawn(
       emoji: emoji, category: category, isTarget: isTarget,
       screenWidth: _screenWidth,
-      emojiSize: GameConstants.emojiSizeBase * lvl.emojiSizeMultiplier,
-      speed: effectiveSpeed, rng: _rng,
+      emojiSize:   GameConstants.emojiSizeBase * lvl.emojiSizeMultiplier,
+      speed: _slowMoActive ? _currentSpeed * GameConstants.slowMoFactor : _currentSpeed,
+      rng: _rng,
     ));
   }
 
-  String _catOf(String emoji) {
-    for (final e in EmojiPool.byCategory.entries) {
-      if (e.value.contains(emoji)) return e.key;
+  String _catOf(String e) {
+    for (final entry in EmojiPool.byCategory.entries) {
+      if (entry.value.contains(e)) return entry.key;
     }
     return 'misc';
   }
 
   void _checkMisses() {
     for (final e in _emojis) {
-      if (!e.isFalling) continue;
-      if (e.y <= _screenHeight + e.size / 2) continue;
+      if (!e.isFalling || e.y <= _screenHeight + e.size / 2) continue;
       e.state = EmojiState.missed;
       if (e.isTarget) {
         _failMessage = FailMessages.getForMissedTarget(e.emoji);
@@ -344,10 +368,8 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  // ── Tap Handler ───────────────────────────────────────────────────────────
   void onEmojiTapped(EmojiItem emoji) {
-    if (_state != GameState.playing) return;
-    if (!emoji.isFalling) return;
+    if (_state != GameState.playing || !emoji.isFalling) return;
     emoji.state = EmojiState.tapped;
 
     if (emoji.isTarget) {
@@ -378,38 +400,30 @@ class GameProvider extends ChangeNotifier {
     _spawnAccum       = 0.0;
     _levelSecondsLeft = 60;
     if (_currentSpeed < _currentLevel.baseSpeed) {
-      _currentSpeed = _currentLevel.baseSpeed.clamp(
-          GameConstants.speedBase, GameConstants.speedMax);
+      _currentSpeed = _currentLevel.baseSpeed
+          .clamp(GameConstants.speedBase, GameConstants.speedMax);
     }
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();
   }
 
   void _triggerGameOver() {
-    _stopTimers();
-    _slowMoTimer?.cancel();
-    _slowMoTimer      = null;
+    _stopAllTimers();
     _slowMoActive     = false;
     _state            = GameState.gameOver;
-    AudioService.instance.stopBgm();
     _failCount++;
+    AudioService.instance.stopBgm();
     _saveHighScore();
-    _showInterstitial = true; // always show interstitial every game over
+    // Show interstitial every game over
+    _showInterstitial = true;
+    // Offer rewarded continue if player has scored anything
+    _showRewarded     = _score > 0;
     notifyListeners();
   }
 
-  String get fakeStat {
-    final pct = max(1, 100 - (_level * 6 + _score ~/ 60)).clamp(1, 96);
-    return 'Only $pct% of players survived level $_level';
-  }
-
-  bool get isNewHighScore => _score > 0 && _score >= _highScore;
-  void clearScoreEvents() => _scoreEvents.clear();
-
   @override
   void dispose() {
-    _stopTimers();
-    _slowMoTimer?.cancel();
+    _stopAllTimers();
     super.dispose();
   }
 }

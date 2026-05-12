@@ -10,36 +10,33 @@ import 'services/audio_service.dart';
 import 'services/network_service.dart';
 import 'services/notification_service.dart';
 import 'services/purchase_service.dart';
+import 'widgets/ad_blocker_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── Portrait lock ──────────────────────────────────────────────────────────
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // ── Status bar styling ─────────────────────────────────────────────────────
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor:                    Colors.transparent,
-      statusBarIconBrightness:           Brightness.light,
-      systemNavigationBarColor:          AppColors.background,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor:                    Colors.transparent,
+    statusBarIconBrightness:           Brightness.light,
+    systemNavigationBarColor:          AppColors.background,
+    systemNavigationBarIconBrightness: Brightness.light,
+  ));
 
-  // ── Network — init first so all subsequent services can check status ───────
+  // ── Network first — everything else depends on it ──────────────────────────
   await NetworkService.instance.init();
 
   // ── AdMob ──────────────────────────────────────────────────────────────────
   await MobileAds.instance.initialize();
 
-  // ── In-App Purchases — must init before AdService so adsRemoved is known ──
+  // ── IAP — must be ready before AdService checks adsRemoved ────────────────
   await PurchaseService.instance.init();
 
-  // ── Ads — gated by PurchaseService.adsRemoved + NetworkService.isOnline ───
+  // ── Ads ────────────────────────────────────────────────────────────────────
   AdService.instance.init();
 
   // ── Audio ──────────────────────────────────────────────────────────────────
@@ -58,20 +55,28 @@ class EmojiRainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Game state
         ChangeNotifierProvider(create: (_) => GameProvider()),
-
-        // In-App Purchase state — drives Remove Ads gating across all screens
         ChangeNotifierProvider.value(value: PurchaseService.instance),
-
-        // Network state — drives NetworkBanner across all screens
         ChangeNotifierProvider.value(value: NetworkService.instance),
+        // AdService is ChangeNotifier so the ad blocker overlay reacts to it
+        ChangeNotifierProvider.value(value: AdService.instance),
       ],
       child: MaterialApp(
         title:                      'Emoji Rain',
         debugShowCheckedModeBanner: false,
         theme:                      _buildTheme(),
         home:                       const HomeScreen(),
+        // App-level builder — places AdBlockerOverlay on top of everything
+        builder: (context, child) {
+          return Stack(
+            children: [
+              child!,
+              // Ad Blocker overlay sits above every screen — cannot be dismissed
+              // until user enables ads or purchases Remove Ads
+              const AdBlockerOverlay(),
+            ],
+          );
+        },
       ),
     );
   }
@@ -86,11 +91,6 @@ class EmojiRainApp extends StatelessWidget {
         secondary: AppColors.accent,
         surface:   AppColors.surface,
         error:     AppColors.error,
-      ),
-      fontFamily:    'Roboto',
-      textTheme: const TextTheme(
-        headlineLarge: AppTextStyles.headlineLarge,
-        bodyMedium:    AppTextStyles.bodyMedium,
       ),
       splashColor:    Colors.transparent,
       highlightColor: Colors.transparent,
