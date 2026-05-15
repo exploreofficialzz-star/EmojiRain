@@ -76,68 +76,10 @@ class ScoreHUD extends StatelessWidget {
             ],
           ),
 
-          // ── Lives row ────────────────────────────────────────────────────
-          const SizedBox(height: 6),
-          _LivesRow(game: game),
+
         ],
       ),
     );
-  }
-}
-
-// ── Lives Row — shows heart icons for wrong tap continues ────────────────────
-class _LivesRow extends StatelessWidget {
-  final GameProvider game;
-  const _LivesRow({required this.game});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!game.slowMoActive) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _SlowMoIndicator(secondsLeft: game.slowMoSecondsLeft),
-      ],
-    );
-  }
-}
-
-// ── Slow Mo indicator shown in HUD while slow mo is active ──────────────────
-class _SlowMoIndicator extends StatelessWidget {
-  final int secondsLeft;
-  const _SlowMoIndicator({required this.secondsLeft});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.slowMoBlue.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: AppColors.slowMoBlue.withOpacity(0.5), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('🐢', style: TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          Text(
-            '${secondsLeft}s',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: AppColors.slowMoBlue,
-            ),
-          ),
-        ],
-      ),
-    )
-        .animate(onPlay: (c) => c.repeat(reverse: true))
-        .shimmer(
-          duration: 900.ms,
-          color: AppColors.slowMoBlue.withOpacity(0.6),
-        );
   }
 }
 
