@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
+import '../services/ad_service.dart';
 import '../services/network_service.dart';
+import '../services/purchase_service.dart';
 import '../widgets/falling_emoji_widget.dart';
 import '../widgets/rule_display.dart';
 import '../widgets/score_hud.dart';
+import '../widgets/tap_effect_widget.dart';
 import 'game_over_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -20,14 +24,28 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int  _previousLevel   = 1;
   bool _showLevelUp     = false;
-  bool _pausedByNetwork = false; // true when WE paused due to network loss
+  bool _pausedByNetwork = false;
+  bool _bannerLoaded    = false;
+
   final List<_ScoreEventDisplay> _activeScoreEvents = [];
+  final List<TapEffect>          _tapEffects        = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadBanner();
     WidgetsBinding.instance.addPostFrameCallback((_) => _initGame());
+  }
+
+  void _loadBanner() {
+    if (PurchaseService.instance.adsRemoved) return;
+    AdService.instance.loadBanner(
+      size: AdSize.banner,
+      onLoaded: () {
+        if (mounted) setState(() => _bannerLoaded = true);
+      },
+    );
   }
 
   void _initGame() {
@@ -42,6 +60,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    AdService.instance.disposeBanner();
     super.dispose();
   }
 
@@ -61,6 +80,21 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _pausedByNetwork = false;
       game.resumeGame();
     }
+  }
+
+  // ── Tap animation ──────────────────────────────────────────────────────────
+  void _addTapEffect(double x, double y, bool isCorrect, String emoji) {
+    final effect = TapEffect(
+      x:     x,
+      y:     y,
+      type:  isCorrect ? TapEffectType.correct : TapEffectType.wrong,
+      emoji: emoji,
+    );
+    setState(() => _tapEffects.add(effect));
+  }
+
+  void _removeTapEffect(String id) {
+    if (mounted) setState(() => _tapEffects.removeWhere((e) => e.id == id));
   }
 
   void _checkLevelUp(GameProvider game) {
@@ -86,13 +120,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
+    final purchase   = context.watch<PurchaseService>();
 
     return Consumer2<GameProvider, NetworkService>(
       builder: (context, game, net, _) {
         _checkLevelUp(game);
         _handleScoreEvents(game);
 
-        // React to network changes on every rebuild
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _handleNetworkChange(game, net),
         );
@@ -114,48 +148,99 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
         return Scaffold(
           backgroundColor: AppColors.background,
-          body: SizedBox.expand(
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                _GameBackground(level: game.level),
-                ..._buildEmojis(game, screenSize),
-                ..._buildScorePopups(),
-                SafeArea(
-                  child: Column(
+          body: Column(
+            children: [
+              // ── Game Area ─────────────────────────────────────────────
+              Expanded(
+                child: SizedBox.expand(
+                  child: Stack(
+                    clipBehavior: Clip.hardEdge,
                     children: [
-                      ScoreHUD(game: game),
-                      const SizedBox(height: 8),
-                      RuleDisplay(level: game.currentLevel, animateIn: _showLevelUp),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: ComboStreakBadge(combo: game.combo),
+                      // ── Background ──────────────────────────────────
+                      _GameBackground(level: game.level),
+
+                      // ── Falling emojis ───────────────────────────────
+                      ..._buildEmojis(game, screenSize),
+
+                      // ── Score popups ─────────────────────────────────
+                      ..._buildScorePopups(),
+
+                      // ── Tap effect animations ─────────────────────────
+                      ..._tapEffects.map((effect) => TapEffectWidget(
+                            key:        ValueKey(effect.id),
+                            effect:     effect,
+                            onComplete: () => _removeTapEffect(effect.id),
+                          )),
+
+                      // ── HUD ──────────────────────────────────────────
+                      SafeArea(
+                        bottom: false,
+                        child: Column(
+                          children: [
+                            ScoreHUD(game: game),
+                            const SizedBox(height: 8),
+                            RuleDisplay(
+                              level:     game.currentLevel,
+                              animateIn: _showLevelUp,
+                            ),
+                            const Spacer(),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 20),
+                              child: ComboStreakBadge(combo: game.combo),
+                            ),
+                          ],
+                        ),
                       ),
+
+                      // ── Level Up Banner ───────────────────────────────
+                      if (_showLevelUp)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Center(
+                              child: LevelUpBanner(level: game.level),
+                            ),
+                          ),
+                        ),
+
+                      // ── Screen flash on wrong tap ─────────────────────
+                      if (game.isGameOver)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(color: Colors.red.withOpacity(0.15))
+                                .animate()
+                                .fadeIn(duration: 80.ms)
+                                .then()
+                                .fadeOut(duration: 300.ms),
+                          ),
+                        ),
+
+                      // ── Manual Pause Overlay ──────────────────────────
+                      if (game.isPaused && !_pausedByNetwork)
+                        _PauseOverlay(game: game),
+
+                      // ── Network Offline Overlay ───────────────────────
+                      if (_pausedByNetwork)
+                        _NetworkGameOverlay(
+                          status:  net.status,
+                          onRetry: () => net.refresh(),
+                        ),
                     ],
                   ),
                 ),
-                if (_showLevelUp)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(child: LevelUpBanner(level: game.level)),
-                    ),
-                  ),
+              ),
 
-                // ── Manual Pause Overlay ────────────────────────────────
-                if (game.isPaused && !_pausedByNetwork)
-                  _PauseOverlay(game: game),
-
-                // ── Network Offline Overlay ─────────────────────────────
-                // Automatically shown when connection drops mid-game.
-                // Disappears and game resumes when connection comes back.
-                if (_pausedByNetwork)
-                  _NetworkGameOverlay(
-                    status:  net.status,
-                    onRetry: () => net.refresh(),
-                  ),
-              ],
-            ),
+              // ── Banner Ad — sits at the very bottom of the game ───────
+              if (_bannerLoaded &&
+                  AdService.instance.bannerAd != null &&
+                  !purchase.adsRemoved)
+                Container(
+                  color:     AppColors.background,
+                  alignment: Alignment.center,
+                  width: AdService.instance.bannerAd!.size.width.toDouble(),
+                  height: AdService.instance.bannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: AdService.instance.bannerAd!),
+                ),
+            ],
           ),
         );
       },
@@ -168,24 +253,32 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       final top  = (e.y - e.size / 2).clamp(-e.size, screenSize.height);
       return Positioned(
         key:  ValueKey(e.id),
-        left: left, top: top,
-        child: FallingEmojiWidget(emoji: e, onTap: () => game.onEmojiTapped(e)),
+        left: left,
+        top:  top,
+        child: FallingEmojiWidget(
+          emoji: e,
+          onTap: () {
+            // Fire tap animation BEFORE calling game logic
+            _addTapEffect(e.x, e.y, e.isTarget, e.emoji);
+            game.onEmojiTapped(e);
+          },
+        ),
       );
     }).toList();
   }
 
   List<Widget> _buildScorePopups() {
-    return _activeScoreEvents.map((display) => ScorePopup(
-      key:     ValueKey(display.hashCode),
-      points:  display.event.points,
-      x:       display.event.x,
-      y:       display.event.y,
-      isCombo: display.event.isCombo,
+    return _activeScoreEvents.map((d) => ScorePopup(
+      key:     ValueKey(d.hashCode),
+      points:  d.event.points,
+      x:       d.event.x,
+      y:       d.event.y,
+      isCombo: d.event.isCombo,
     )).toList();
   }
 }
 
-// ── Network Offline Overlay (mid-game) ────────────────────────────────────────
+// ── Network Offline Overlay ───────────────────────────────────────────────────
 class _NetworkGameOverlay extends StatelessWidget {
   final NetworkStatus status;
   final VoidCallback  onRetry;
@@ -206,8 +299,11 @@ class _NetworkGameOverlay extends StatelessWidget {
                 Text(isNoInternet ? '📡' : '📶',
                     style: const TextStyle(fontSize: 70))
                     .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(begin: const Offset(1.0, 1.0), end: const Offset(1.1, 1.1),
-                           duration: 1000.ms),
+                    .scale(
+                      begin: const Offset(1.0, 1.0),
+                      end:   const Offset(1.1, 1.1),
+                      duration: 1000.ms,
+                    ),
                 const SizedBox(height: 24),
                 Text(
                   isNoInternet ? 'No Internet Connection' : 'No Data Available',
@@ -278,7 +374,8 @@ class _GameBackground extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          begin: Alignment.topCenter,
+          end:   Alignment.bottomCenter,
           colors: [
             Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0D2B), intensity)!,
             Color.lerp(const Color(0xFF08081A), const Color(0xFF0D0814), intensity)!,
@@ -329,15 +426,19 @@ class _PauseOverlay extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('⏸️', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 12),
-            const Text('PAUSED', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
-                color: AppColors.textPrimary, letterSpacing: 3)),
+            const Text('PAUSED', style: TextStyle(
+              fontSize:   28,
+              fontWeight: FontWeight.w900,
+              color:      AppColors.textPrimary,
+              letterSpacing: 3,
+            )),
             const SizedBox(height: 8),
             Text('Score: ${game.score}', style: AppTextStyles.bodyMedium),
             const SizedBox(height: 28),
-            _buildBtn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black,
+            _btn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black,
                 () => game.resumeGame()),
             const SizedBox(height: 12),
-            _buildBtn('QUIT', '🏠',
+            _btn('QUIT', '🏠',
                 const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
                 Colors.white, () {
               game.goHome();
@@ -349,7 +450,7 @@ class _PauseOverlay extends StatelessWidget {
     ).animate().fadeIn(duration: 200.ms);
   }
 
-  Widget _buildBtn(String label, String icon, Gradient gradient,
+  Widget _btn(String label, String icon, Gradient gradient,
       Color textColor, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -359,8 +460,10 @@ class _PauseOverlay extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 8),
-          Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-              color: textColor, letterSpacing: 1)),
+          Text(label, style: TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w800,
+            color: textColor, letterSpacing: 1,
+          )),
         ]),
       ),
     );
