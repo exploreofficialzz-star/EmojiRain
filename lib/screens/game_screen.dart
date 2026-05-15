@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
-import '../services/ad_service.dart';
 import '../services/network_service.dart';
 import '../widgets/falling_emoji_widget.dart';
 import '../widgets/rule_display.dart';
@@ -21,7 +20,7 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int  _previousLevel   = 1;
   bool _showLevelUp     = false;
-  bool _pausedByNetwork = false;
+  bool _pausedByNetwork = false; // true when WE paused due to network loss
   final List<_ScoreEventDisplay> _activeScoreEvents = [];
 
   @override
@@ -32,10 +31,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   }
 
   void _initGame() {
-    if (widget.isContinue) return; // provider already in playing state
+    if (widget.isContinue) return;
     final size = MediaQuery.sizeOf(context);
     context.read<GameProvider>().startGame(
-      screenWidth: size.width, screenHeight: size.height,
+      screenWidth:  size.width,
+      screenHeight: size.height,
     );
   }
 
@@ -52,7 +52,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ── Network auto-pause / auto-resume ──────────────────────────────────────
+  // ── Network auto-pause / resume ────────────────────────────────────────────
   void _handleNetworkChange(GameProvider game, NetworkService net) {
     if (net.isOffline && game.isPlaying) {
       game.pauseGame();
@@ -83,37 +83,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _activeScoreEvents.removeWhere((e) => DateTime.now().isAfter(e.expiry));
   }
 
-  // ── Slow Mo rewarded ad ───────────────────────────────────────────────────
-  Future<void> _activateSlowMo(GameProvider game) async {
-    if (NetworkService.instance.isOffline) {
-      _showSnack('Connect to the internet to use Slow-Mo.', isError: true);
-      return;
-    }
-    if (!AdService.instance.rewardedReady) {
-      _showSnack('Ad not ready yet. Try again in a moment.');
-      return;
-    }
-
-    game.pauseGame();
-    await AdService.instance.showRewarded(
-      onRewarded:    () { game.activateSlowMo(); game.resumeGame(); },
-      onSkipped:     () => game.resumeGame(),
-      onUnavailable: () { game.resumeGame(); _showSnack('Ad unavailable. Try again shortly.'); },
-    );
-  }
-
-  void _showSnack(String msg, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: isError ? const Color(0xFFE65100) : AppColors.surfaceCard,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(12),
-      duration: const Duration(seconds: 2),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
@@ -123,21 +92,22 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _checkLevelUp(game);
         _handleScoreEvents(game);
 
-        // React to network changes every frame
+        // React to network changes on every rebuild
         WidgetsBinding.instance.addPostFrameCallback(
           (_) => _handleNetworkChange(game, net),
         );
 
-        // Navigate to GameOverScreen when game ends
         if (game.isGameOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && game.isGameOver) {
-              Navigator.of(context).pushReplacement(PageRouteBuilder(
-                pageBuilder:        (_, a, __) => const GameOverScreen(),
-                transitionsBuilder: (_, a, __, child) =>
-                    FadeTransition(opacity: a, child: child),
-                transitionDuration: const Duration(milliseconds: 400),
-              ));
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder:        (_, anim, __) => const GameOverScreen(),
+                  transitionsBuilder: (_, anim, __, child) =>
+                      FadeTransition(opacity: anim, child: child),
+                  transitionDuration: const Duration(milliseconds: 400),
+                ),
+              );
             }
           });
         }
@@ -148,16 +118,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
             child: Stack(
               clipBehavior: Clip.hardEdge,
               children: [
-                // ── Background ────────────────────────────────────────
                 _GameBackground(level: game.level),
-
-                // ── Falling emojis ────────────────────────────────────
                 ..._buildEmojis(game, screenSize),
-
-                // ── Score popups ──────────────────────────────────────
                 ..._buildScorePopups(),
-
-                // ── HUD ───────────────────────────────────────────────
                 SafeArea(
                   child: Column(
                     children: [
@@ -172,8 +135,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
-
-                // ── Level Up Banner ───────────────────────────────────
                 if (_showLevelUp)
                   Positioned.fill(
                     child: IgnorePointer(
@@ -181,23 +142,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ),
                   ),
 
-                // ── Slow Mo Button ────────────────────────────────────
-                if (game.isPlaying && !game.slowMoActive)
-                  Positioned(
-                    bottom: 88, right: 16,
-                    child: _SlowMoButton(
-                      usesLeft: game.slowMoUsesLeft,
-                      onTap:    () => _activateSlowMo(game),
-                    ),
-                  ),
-
-                // ── Manual Pause Overlay ──────────────────────────────
+                // ── Manual Pause Overlay ────────────────────────────────
                 if (game.isPaused && !_pausedByNetwork)
                   _PauseOverlay(game: game),
 
-                // ── Network Game Overlay ──────────────────────────────
-                // Automatically pauses the game when connection drops.
-                // Auto-resumes when connection is restored.
+                // ── Network Offline Overlay ─────────────────────────────
+                // Automatically shown when connection drops mid-game.
+                // Disappears and game resumes when connection comes back.
                 if (_pausedByNetwork)
                   _NetworkGameOverlay(
                     status:  net.status,
@@ -211,24 +162,25 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  List<Widget> _buildEmojis(GameProvider game, Size size) {
+  List<Widget> _buildEmojis(GameProvider game, Size screenSize) {
     return game.emojis.map((e) {
-      final left = (e.x - e.size / 2).clamp(0.0, size.width  - e.size);
-      final top  = (e.y - e.size / 2).clamp(-e.size, size.height);
+      final left = (e.x - e.size / 2).clamp(0.0, screenSize.width  - e.size);
+      final top  = (e.y - e.size / 2).clamp(-e.size, screenSize.height);
       return Positioned(
-        key: ValueKey(e.id), left: left, top: top,
+        key:  ValueKey(e.id),
+        left: left, top: top,
         child: FallingEmojiWidget(emoji: e, onTap: () => game.onEmojiTapped(e)),
       );
     }).toList();
   }
 
   List<Widget> _buildScorePopups() {
-    return _activeScoreEvents.map((d) => ScorePopup(
-      key:     ValueKey(d.hashCode),
-      points:  d.event.points,
-      x:       d.event.x,
-      y:       d.event.y,
-      isCombo: d.event.isCombo,
+    return _activeScoreEvents.map((display) => ScorePopup(
+      key:     ValueKey(display.hashCode),
+      points:  display.event.points,
+      x:       display.event.x,
+      y:       display.event.y,
+      isCombo: display.event.isCombo,
     )).toList();
   }
 }
@@ -242,7 +194,6 @@ class _NetworkGameOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNoInternet = status == NetworkStatus.noInternet;
-
     return Positioned.fill(
       child: Container(
         color: Colors.black.withOpacity(0.93),
@@ -252,34 +203,26 @@ class _NetworkGameOverlay extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  isNoInternet ? '📡' : '📶',
-                  style: const TextStyle(fontSize: 70),
-                )
+                Text(isNoInternet ? '📡' : '📶',
+                    style: const TextStyle(fontSize: 70))
                     .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(
-                      begin: const Offset(1.0, 1.0),
-                      end:   const Offset(1.1, 1.1),
-                      duration: 1000.ms,
-                    ),
+                    .scale(begin: const Offset(1.0, 1.0), end: const Offset(1.1, 1.1),
+                           duration: 1000.ms),
                 const SizedBox(height: 24),
                 Text(
                   isNoInternet ? 'No Internet Connection' : 'No Data Available',
-                  style: const TextStyle(
-                    fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white,
-                  ),
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900,
+                      color: Colors.white),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   isNoInternet
                       ? 'Connect to Wi-Fi or enable\nmobile data to continue.'
-                      : 'You\'re connected but data\nisn\'t flowing. Check your\nmobile data or Wi-Fi.',
-                  style: const TextStyle(
-                    fontSize: 15, color: Color(0xFFB0BEC5), height: 1.6,
-                  ),
+                      : 'Connected but data isn\'t\nflowing. Check your mobile\ndata or Wi-Fi.',
+                  style: const TextStyle(fontSize: 15, color: Color(0xFFB0BEC5), height: 1.6),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
@@ -287,10 +230,8 @@ class _NetworkGameOverlay extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     border:       Border.all(color: Colors.white12),
                   ),
-                  child: const Text(
-                    '⏸  Game paused — resumes automatically',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF78909C)),
-                  ),
+                  child: const Text('⏸  Game paused — resumes automatically',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF78909C))),
                 ),
                 const SizedBox(height: 36),
                 GestureDetector(
@@ -298,7 +239,7 @@ class _NetworkGameOverlay extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
                     decoration: BoxDecoration(
-                      gradient: AppColors.primaryBtnGradient,
+                      gradient:     AppColors.primaryBtnGradient,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [BoxShadow(
                         color: AppColors.primary.withOpacity(0.3),
@@ -326,48 +267,6 @@ class _NetworkGameOverlay extends StatelessWidget {
   }
 }
 
-// ── Slow Mo Button ────────────────────────────────────────────────────────────
-class _SlowMoButton extends StatelessWidget {
-  final int usesLeft; final VoidCallback onTap;
-  const _SlowMoButton({required this.usesLeft, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    if (usesLeft <= 0) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 64, height: 64,
-        decoration: BoxDecoration(
-          color: AppColors.slowMoBlue.withOpacity(0.15),
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.slowMoBlue.withOpacity(0.6), width: 1.5),
-          boxShadow: [BoxShadow(
-            color: AppColors.slowMoBlue.withOpacity(0.25), blurRadius: 16, spreadRadius: 2,
-          )],
-        ),
-        child: Stack(alignment: Alignment.center, children: [
-          const Text('🐢', style: TextStyle(fontSize: 28)),
-          Positioned(top: 4, right: 4,
-            child: Container(
-              width: 18, height: 18,
-              decoration: BoxDecoration(
-                color: AppColors.slowMoBlue, shape: BoxShape.circle,
-                border: Border.all(color: Colors.black, width: 1.2),
-              ),
-              child: Center(child: Text('$usesLeft',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black))),
-            ),
-          ),
-        ]),
-      ),
-    ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
-      begin: const Offset(1.0, 1.0), end: const Offset(1.06, 1.06),
-      duration: 1400.ms, curve: Curves.easeInOut,
-    );
-  }
-}
-
 // ── Game Background ───────────────────────────────────────────────────────────
 class _GameBackground extends StatelessWidget {
   final int level;
@@ -375,36 +274,38 @@ class _GameBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = (level / 10).clamp(0.0, 1.0);
+    final intensity = (level / 10).clamp(0.0, 1.0);
     return Container(
-      decoration: BoxDecoration(gradient: LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [
-          Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0D2B), t)!,
-          Color.lerp(const Color(0xFF08081A), const Color(0xFF0D0814), t)!,
-        ],
-      )),
-      child: CustomPaint(size: Size.infinite, painter: _StarPainter(seed: level)),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(const Color(0xFF0D0D2B), const Color(0xFF1A0D2B), intensity)!,
+            Color.lerp(const Color(0xFF08081A), const Color(0xFF0D0814), intensity)!,
+          ],
+        ),
+      ),
+      child: CustomPaint(size: Size.infinite, painter: _StarfieldPainter(seed: level)),
     );
   }
 }
 
-class _StarPainter extends CustomPainter {
+class _StarfieldPainter extends CustomPainter {
   final int seed;
-  const _StarPainter({required this.seed});
+  const _StarfieldPainter({required this.seed});
+
   @override
-  void paint(Canvas c, Size s) {
-    final p = Paint()..color = Colors.white.withOpacity(0.25);
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white.withOpacity(0.25);
     for (int i = 0; i < 40; i++) {
-      c.drawCircle(
-        Offset(s.width * ((i * 137 + seed * 11) % 97) / 97,
-               s.height * ((i * 83 + seed * 7) % 89) / 89),
-        i % 3 == 0 ? 1.5 : 1.0, p,
-      );
+      final x = size.width  * ((i * 137 + seed * 11) % 97) / 97;
+      final y = size.height * ((i * 83  + seed * 7)  % 89) / 89;
+      canvas.drawCircle(Offset(x, y), (i % 3 == 0) ? 1.5 : 1.0, paint);
     }
   }
+
   @override
-  bool shouldRepaint(_StarPainter o) => o.seed != seed;
+  bool shouldRepaint(_StarfieldPainter old) => old.seed != seed;
 }
 
 // ── Pause Overlay ─────────────────────────────────────────────────────────────
@@ -418,49 +319,48 @@ class _PauseOverlay extends StatelessWidget {
       color: Colors.black.withOpacity(0.75),
       child: Center(
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 40),
+          margin:  const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: AppColors.surfaceCard, borderRadius: BorderRadius.circular(28),
+            color:        AppColors.surfaceCard,
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('⏸️', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 12),
-            const Text('PAUSED', style: TextStyle(
-              fontSize: 28, fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary, letterSpacing: 3,
-            )),
+            const Text('PAUSED', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary, letterSpacing: 3)),
             const SizedBox(height: 8),
             Text('Score: ${game.score}', style: AppTextStyles.bodyMedium),
             const SizedBox(height: 28),
-            _btn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black, game.resumeGame),
+            _buildBtn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black,
+                () => game.resumeGame()),
             const SizedBox(height: 12),
-            _btn('QUIT', '🏠',
-              const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
-              Colors.white, () {
-                game.goHome();
-                Navigator.of(context).popUntil((r) => r.isFirst);
-              },
-            ),
+            _buildBtn('QUIT', '🏠',
+                const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
+                Colors.white, () {
+              game.goHome();
+              Navigator.of(context).popUntil((r) => r.isFirst);
+            }),
           ]),
         ),
       ),
     ).animate().fadeIn(duration: 200.ms);
   }
 
-  Widget _btn(String label, String icon, Gradient g, Color tc, VoidCallback fn) {
+  Widget _buildBtn(String label, String icon, Gradient gradient,
+      Color textColor, VoidCallback onTap) {
     return GestureDetector(
-      onTap: fn,
+      onTap: onTap,
       child: Container(
         width: double.infinity, height: 52,
-        decoration: BoxDecoration(gradient: g, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(16)),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 8),
-          Text(label, style: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w800, color: tc, letterSpacing: 1,
-          )),
+          Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+              color: textColor, letterSpacing: 1)),
         ]),
       ),
     );

@@ -1,38 +1,41 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
+// ── Network Status ────────────────────────────────────────────────────────────
 enum NetworkStatus {
-  online,      // connected + internet reachable
-  noInternet,  // no connection type (airplane mode / no signal)
-  noData,      // connected to wifi/mobile but no actual data flowing
+  online,      // connected AND real internet is reachable
+  noInternet,  // no network type at all (airplane mode / no signal)
+  noData,      // connected to wifi or mobile but NO data flowing
+               // e.g. WiFi portal, mobile data disabled, ISP issue
 }
 
+/// Dual-layer network check:
+/// Layer 1 — ConnectivityResult (wifi/mobile/none)
+/// Layer 2 — internet_connection_checker_plus (actual data reachability)
+///
+/// This correctly handles:
+///   • Airplane mode           → noInternet
+///   • WiFi connected, no data  → noData
+///   • Mobile signal, data off  → noData
+///   • WiFi portal/captive      → noData
+///   • Normal connection        → online
 class NetworkService extends ChangeNotifier {
   NetworkService._();
   static final NetworkService instance = NetworkService._();
 
-  // Ping these hosts in order — first success = online
-  static const List<String> _pingHosts = [
-    'google.com',
-    'cloudflare.com',
-    '1.1.1.1',
-  ];
-  static const Duration _pingTimeout  = Duration(seconds: 4);
-  static const Duration _retryDelay   = Duration(seconds: 7);
-
   NetworkStatus _status   = NetworkStatus.online;
   bool          _checking = false;
 
-  StreamSubscription<List<ConnectivityResult>>? _sub;
-  Timer? _retryTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<InternetStatus>?           _internetSub;
 
   NetworkStatus get status   => _status;
-  bool          get isOnline => _status == NetworkStatus.online;
+  bool          get isOnline  => _status == NetworkStatus.online;
   bool          get isOffline => _status != NetworkStatus.online;
 
-  // ── Messages ──────────────────────────────────────────────────────────────
+  // ── Human-readable messages ────────────────────────────────────────────────
   String get title {
     switch (_status) {
       case NetworkStatus.online:      return '';
@@ -43,94 +46,89 @@ class NetworkService extends ChangeNotifier {
 
   String get message {
     switch (_status) {
-      case NetworkStatus.online:
-        return '';
-      case NetworkStatus.noInternet:
-        return 'You\'re not connected to the internet.\nConnect to Wi-Fi or enable mobile data.';
-      case NetworkStatus.noData:
-        return 'You\'re connected but data isn\'t flowing.\nCheck your mobile data or Wi-Fi connection.';
+      case NetworkStatus.online:     return '';
+      case NetworkStatus.noInternet: return 'You\'re not connected.\nConnect to Wi-Fi or enable mobile data to continue.';
+      case NetworkStatus.noData:     return 'Connected but no data flowing.\nCheck your mobile data or Wi-Fi connection.';
     }
   }
 
   String get shortMessage {
     switch (_status) {
-      case NetworkStatus.online:      return '';
-      case NetworkStatus.noInternet:  return 'No internet connection';
-      case NetworkStatus.noData:      return 'Check your mobile data or Wi-Fi';
+      case NetworkStatus.online:     return '';
+      case NetworkStatus.noInternet: return 'No internet connection';
+      case NetworkStatus.noData:     return 'Check your mobile data or Wi-Fi';
     }
   }
 
   String get icon {
     switch (_status) {
-      case NetworkStatus.online:      return '';
-      case NetworkStatus.noInternet:  return '📡';
-      case NetworkStatus.noData:      return '📶';
+      case NetworkStatus.online:     return '';
+      case NetworkStatus.noInternet: return '📡';
+      case NetworkStatus.noData:     return '📶';
     }
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   Future<void> init() async {
-    await _check();
-    _sub = Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+    // Check immediately on startup
+    await _fullCheck();
+
+    // React to network type changes (wifi ↔ mobile ↔ none)
+    _connectivitySub = Connectivity().onConnectivityChanged.listen(
+      (_) => _fullCheck(),
+    );
+
+    // React to real internet status changes from the checker package
+    // This fires when actual reachability changes (e.g. data runs out)
+    _internetSub = InternetConnection().onStatusChange.listen(
+      (status) => _applyInternetStatus(status),
+    );
   }
 
-  Future<void> refresh() async {
-    _retryTimer?.cancel();
-    await _check();
-  }
+  // ── Manual refresh ────────────────────────────────────────────────────────
+  Future<void> refresh() => _fullCheck();
 
   // ── Internal ──────────────────────────────────────────────────────────────
-  void _onConnectivityChanged(List<ConnectivityResult> results) => _check();
-
-  Future<void> _check() async {
+  Future<void> _fullCheck() async {
     if (_checking) return;
     _checking = true;
 
     try {
+      // Step 1: Check network type
       final results = await Connectivity().checkConnectivity();
+      final hasNetworkType = results.isNotEmpty &&
+          results.any((r) => r != ConnectivityResult.none);
 
-      // Step 1 — No network type at all
-      if (results.isEmpty || results.every((r) => r == ConnectivityResult.none)) {
+      if (!hasNetworkType) {
+        // No network type at all — definitely no internet
         _setStatus(NetworkStatus.noInternet);
-        _scheduleRetry();
         return;
       }
 
-      // Step 2 — Connected to a network type (wifi/mobile/ethernet)
-      // Now verify real data flows by pinging known hosts
-      final hasData = await _pingAny();
+      // Step 2: Connected to a network — verify actual internet reachability
+      // internet_connection_checker_plus tries multiple endpoints:
+      // Default: dns1.p01.nsone.net, dns2.p01.nsone.net, icanhazip.com
+      final hasInternet = await InternetConnection().hasInternetAccess;
 
-      if (hasData) {
+      if (hasInternet) {
         _setStatus(NetworkStatus.online);
-        _retryTimer?.cancel();
       } else {
-        // Connected to network but no data flowing
+        // Connected to wifi/mobile but no actual data flowing
         _setStatus(NetworkStatus.noData);
-        _scheduleRetry();
       }
     } finally {
       _checking = false;
     }
   }
 
-  /// Tries each host in order. Returns true as soon as one resolves.
-  Future<bool> _pingAny() async {
-    for (final host in _pingHosts) {
-      try {
-        final result = await InternetAddress.lookup(host)
-            .timeout(_pingTimeout);
-        if (result.isNotEmpty && result.first.rawAddress.isNotEmpty) {
-          return true;
-        }
-      } on SocketException {
-        continue;
-      } on TimeoutException {
-        continue;
-      } catch (_) {
-        continue;
-      }
+  void _applyInternetStatus(InternetStatus status) {
+    if (status == InternetStatus.connected) {
+      _setStatus(NetworkStatus.online);
+    } else {
+      // Don't blindly set noData — check what type of connection we have
+      // to give the right message
+      _fullCheck();
     }
-    return false;
   }
 
   void _setStatus(NetworkStatus s) {
@@ -139,15 +137,10 @@ class NetworkService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _scheduleRetry() {
-    _retryTimer?.cancel();
-    _retryTimer = Timer(_retryDelay, _check);
-  }
-
   @override
   void dispose() {
-    _sub?.cancel();
-    _retryTimer?.cancel();
+    _connectivitySub?.cancel();
+    _internetSub?.cancel();
     super.dispose();
   }
 }

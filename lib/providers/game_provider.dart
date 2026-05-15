@@ -18,21 +18,20 @@ class ScoreEvent {
 }
 
 class GameProvider extends ChangeNotifier {
-  // ── Core ──────────────────────────────────────────────────────────────────
   GameState        _state        = GameState.idle;
   List<EmojiItem>  _emojis       = [];
   List<ScoreEvent> _scoreEvents  = [];
-  int    _score            = 0;
-  int    _highScore        = 0;
-  int    _combo            = 0;
-  int    _maxCombo         = 0;
-  int    _level            = 1;
-  int    _failCount        = 0;
-  int    _levelSecondsLeft = 60;
-  bool   _showInterstitial = false;
-  bool   _showRewarded     = false;
-  String _failMessage      = '';
-  String _tappedEmoji      = '';
+  int    _score             = 0;
+  int    _highScore         = 0;
+  int    _combo             = 0;
+  int    _maxCombo          = 0;
+  int    _level             = 1;
+  int    _failCount         = 0;
+  int    _levelSecondsLeft  = 60;
+  bool   _showInterstitial  = false;
+  bool   _showRewarded      = false;
+  String _failMessage       = '';
+  String _tappedEmoji       = '';
 
   LevelConfig _currentLevel = LevelData.getLevel(1);
   double _screenWidth       = 390;
@@ -45,12 +44,6 @@ class GameProvider extends ChangeNotifier {
   Timer? _gameTimer;
   Timer? _spawnTimer;
   Timer? _levelTimer;
-
-  // ── Slow Mo ───────────────────────────────────────────────────────────────
-  bool   _slowMoActive      = false;
-  int    _slowMoSecondsLeft = 0;
-  int    _slowMoUsesLeft    = GameConstants.maxSlowMoPerSession;
-  Timer? _slowMoTimer;
 
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
@@ -70,11 +63,6 @@ class GameProvider extends ChangeNotifier {
   String           get failMessage            => _failMessage;
   String           get tappedEmoji            => _tappedEmoji;
   LevelConfig      get currentLevel           => _currentLevel;
-  bool             get slowMoActive           => _slowMoActive;
-  int              get slowMoSecondsLeft      => _slowMoSecondsLeft;
-  int              get slowMoUsesLeft         => _slowMoUsesLeft;
-  bool             get canActivateSlowMo      =>
-      _slowMoUsesLeft > 0 && !_slowMoActive && _state == GameState.playing;
   bool             get isNewHighScore         => _score > 0 && _score >= _highScore;
 
   int get comboMultiplier {
@@ -92,7 +80,6 @@ class GameProvider extends ChangeNotifier {
 
   GameProvider() { _loadHighScore(); }
 
-  // ── Persistence ───────────────────────────────────────────────────────────
   Future<void> _loadHighScore() async {
     final prefs = await SharedPreferences.getInstance();
     _highScore  = prefs.getInt('high_score') ?? 0;
@@ -126,11 +113,6 @@ class GameProvider extends ChangeNotifier {
     _currentLevel     = LevelData.getLevel(1);
     _failMessage      = '';
     _tappedEmoji      = '';
-    _slowMoActive     = false;
-    _slowMoSecondsLeft = 0;
-    _slowMoUsesLeft   = GameConstants.maxSlowMoPerSession;
-    _slowMoTimer?.cancel();
-    _slowMoTimer      = null;
 
     _startLoop();
     AudioService.instance.startBgm();
@@ -141,7 +123,6 @@ class GameProvider extends ChangeNotifier {
     if (_state != GameState.playing) return;
     _state = GameState.paused;
     _stopTimers();
-    _slowMoTimer?.cancel();
     AudioService.instance.pauseBgm();
     notifyListeners();
   }
@@ -149,20 +130,19 @@ class GameProvider extends ChangeNotifier {
   void resumeGame() {
     if (_state != GameState.paused) return;
     _state = GameState.playing;
-    if (_slowMoActive && _slowMoSecondsLeft > 0) _restartSlowMoTimer();
     _startLoop();
     AudioService.instance.resumeBgm();
     notifyListeners();
   }
 
   void retryGame() {
-    _stopAllTimers();
+    _stopTimers();
     AudioService.instance.stopBgm();
     startGame(screenWidth: _screenWidth, screenHeight: _screenHeight);
   }
 
   void goHome() {
-    _stopAllTimers();
+    _stopTimers();
     AudioService.instance.stopBgm();
     _state       = GameState.idle;
     _emojis      = [];
@@ -175,19 +155,14 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keeps score and level — clears emojis and resumes play.
   /// Called after player watches full rewarded ad on game-over screen.
-  /// Keeps current score/level, clears emojis and resumes play.
   void continueAfterRewardedAd() {
     _emojis.clear();
     _scoreEvents.clear();
     _spawnAccum       = 0;
     _showRewarded     = false;
     _showInterstitial = false;
-    _slowMoActive     = false;
-    _slowMoSecondsLeft = 0;
-    _slowMoUsesLeft   = GameConstants.maxSlowMoPerSession;
-    _slowMoTimer?.cancel();
-    _slowMoTimer      = null;
     _state            = GameState.playing;
     _startLoop();
     AudioService.instance.startBgm();
@@ -195,37 +170,6 @@ class GameProvider extends ChangeNotifier {
   }
 
   void clearScoreEvents() => _scoreEvents.clear();
-
-  // ── Slow Mo ───────────────────────────────────────────────────────────────
-  void activateSlowMo() {
-    if (!canActivateSlowMo) return;
-    _slowMoUsesLeft--;
-    _slowMoActive      = true;
-    _slowMoSecondsLeft = GameConstants.slowMoSeconds;
-    final slow = _currentSpeed * GameConstants.slowMoFactor;
-    for (final e in _emojis) { if (e.isFalling) e.speed = slow; }
-    _restartSlowMoTimer();
-    AudioService.instance.play(SoundEffect.levelup);
-    notifyListeners();
-  }
-
-  void _restartSlowMoTimer() {
-    _slowMoTimer?.cancel();
-    _slowMoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!_slowMoActive || _state != GameState.playing) return;
-      _slowMoSecondsLeft--;
-      _slowMoSecondsLeft <= 0 ? _endSlowMo() : notifyListeners();
-    });
-  }
-
-  void _endSlowMo() {
-    _slowMoActive      = false;
-    _slowMoSecondsLeft = 0;
-    _slowMoTimer?.cancel();
-    _slowMoTimer       = null;
-    for (final e in _emojis) { if (e.isFalling) e.speed = _currentSpeed; }
-    notifyListeners();
-  }
 
   // ── Game Loop ─────────────────────────────────────────────────────────────
   void _startLoop() {
@@ -261,24 +205,14 @@ class GameProvider extends ChangeNotifier {
     _gameTimer = _spawnTimer = _levelTimer = null;
   }
 
-  void _stopAllTimers() {
-    _stopTimers();
-    _slowMoTimer?.cancel();
-    _slowMoTimer = null;
-  }
-
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
     _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
         .clamp(GameConstants.speedBase, GameConstants.speedMax);
 
-    final speed = _slowMoActive
-        ? _currentSpeed * GameConstants.slowMoFactor
-        : _currentSpeed;
-
     for (final e in _emojis) {
-      if (e.isFalling) { e.speed = speed; e.y += speed * dt; }
+      if (e.isFalling) { e.speed = _currentSpeed; e.y += _currentSpeed * dt; }
     }
 
     _checkMisses();
@@ -293,6 +227,7 @@ class GameProvider extends ChangeNotifier {
     _spawnAccum += 0.04;
     if (_spawnAccum < _currentLevel.spawnInterval) return;
     _spawnAccum = 0.0;
+
     _spawnEmoji();
     if (_level >= 2  && _rng.nextBool())         _spawnEmoji();
     if (_level >= 4  && _rng.nextBool())         _spawnEmoji();
@@ -342,8 +277,7 @@ class GameProvider extends ChangeNotifier {
       emoji: emoji, category: category, isTarget: isTarget,
       screenWidth: _screenWidth,
       emojiSize:   GameConstants.emojiSizeBase * lvl.emojiSizeMultiplier,
-      speed: _slowMoActive ? _currentSpeed * GameConstants.slowMoFactor : _currentSpeed,
-      rng: _rng,
+      speed: _currentSpeed, rng: _rng,
     ));
   }
 
@@ -408,22 +342,19 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _triggerGameOver() {
-    _stopAllTimers();
-    _slowMoActive     = false;
+    _stopTimers();
     _state            = GameState.gameOver;
     _failCount++;
     AudioService.instance.stopBgm();
     _saveHighScore();
-    // Show interstitial every game over
-    _showInterstitial = true;
-    // Offer rewarded continue if player has scored anything
-    _showRewarded     = _score > 0;
+    _showInterstitial = true;          // always show interstitial
+    _showRewarded     = _score > 0;    // offer continue if player scored anything
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _stopAllTimers();
+    _stopTimers();
     super.dispose();
   }
 }

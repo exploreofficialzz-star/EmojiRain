@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:adblock_detector/adblock_detector.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../constants/app_constants.dart';
 import 'network_service.dart';
@@ -10,25 +12,56 @@ class AdService extends ChangeNotifier {
   static final AdService instance = AdService._();
 
   // ── Ad Blocker Detection ──────────────────────────────────────────────────
-  // If ads fail to load 3+ times consecutively while network is online,
-  // we flag it as likely blocked. The overlay prompts user to enable ads
-  // or purchase Remove Ads.
-  int  _consecutiveFailures = 0;
+  // Two-layer detection:
+  // 1. adblock_detector — tests actual reachability of AdMob ad servers
+  //    (catches DNS blocking, Private DNS like AdGuard/NextDNS, hosts file)
+  // 2. Consecutive failure tracking — catches VPN-level blocking (AdGuard app,
+  //    Total Adblock) where ad loads fail but DNS resolves
+
   bool _adsBlocked          = false;
+  int  _consecutiveFailures = 0;
+  bool _adBlockCheckDone    = false;
 
   bool get adsBlocked => _adsBlocked && !PurchaseService.instance.adsRemoved;
 
+  /// Layer 1: DNS-level check using adblock_detector
+  /// Runs once on init and re-runs on retryAds()
+  Future<void> _checkAdBlocker() async {
+    if (!NetworkService.instance.isOnline) return;
+
+    try {
+      final detector = AdBlockDetector();
+      final blocked  = await detector.isAdBlockEnabled(
+        testAdNetworks: [AdNetworks.googleAdMob],
+      );
+      _adBlockCheckDone = true;
+      if (blocked && !_adsBlocked) {
+        _adsBlocked = true;
+        notifyListeners();
+      } else if (!blocked && _adsBlocked && _consecutiveFailures == 0) {
+        _adsBlocked = false;
+        notifyListeners();
+      }
+    } catch (_) {
+      // adblock_detector threw — fall back to failure tracking only
+      _adBlockCheckDone = true;
+    }
+  }
+
+  /// Layer 2: Consecutive ad-load failure tracking
+  /// Catches VPN-based blockers that pass DNS but intercept HTTP ad requests
   void _onAdLoadSuccess() {
-    if (_consecutiveFailures > 0 || _adsBlocked) {
-      _consecutiveFailures = 0;
-      _adsBlocked          = false;
+    if (_consecutiveFailures == 0 && !_adsBlocked) return;
+    _consecutiveFailures = 0;
+    // Only clear blocked flag if the DNS check also passed
+    if (_adBlockCheckDone && _adsBlocked) {
+      _adsBlocked = false;
       notifyListeners();
     }
   }
 
   void _onAdLoadFailed() {
-    // Only flag as blocked when network is confirmed online
-    if (!NetworkService.instance.isOnline) return;
+    if (!NetworkService.instance.isOnline) return; // genuine offline, not blocking
     _consecutiveFailures++;
     if (_consecutiveFailures >= 3 && !_adsBlocked) {
       _adsBlocked = true;
@@ -36,12 +69,15 @@ class AdService extends ChangeNotifier {
     }
   }
 
-  /// Called when user taps "Enable Ads & Retry" on the blocker overlay.
-  void retryAds() {
+  /// Called from "Enable Ads & Retry" button on the blocker overlay
+  Future<void> retryAds() async {
     _consecutiveFailures = 0;
     _adsBlocked          = false;
+    _adBlockCheckDone    = false;
     notifyListeners();
-    // Re-attempt loading all ad formats
+
+    // Re-run DNS check and reload all ads
+    await _checkAdBlocker();
     loadInterstitial();
     loadRewarded();
     loadBanner();
@@ -49,10 +85,9 @@ class AdService extends ChangeNotifier {
 
   // ── Banner ────────────────────────────────────────────────────────────────
   BannerAd? _bannerAd;
-  bool      _bannerLoaded = false;
+  bool _bannerLoaded = false;
 
-  BannerAd? get bannerAd     => _bannerLoaded ? _bannerAd : null;
-  bool      get bannerLoaded => _bannerLoaded;
+  BannerAd? get bannerAd => _bannerLoaded ? _bannerAd : null;
 
   void loadBanner({AdSize size = AdSize.banner, VoidCallback? onLoaded}) {
     if (PurchaseService.instance.adsRemoved) return;
@@ -62,21 +97,22 @@ class AdService extends ChangeNotifier {
 
     _bannerAd = BannerAd(
       adUnitId: AdIds.banner,
-      size:     size,
-      request:  const AdRequest(),
+      size: size,
+      request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
           _bannerLoaded = true;
           _onAdLoadSuccess();
           onLoaded?.call();
         },
-        onAdFailedToLoad: (ad, error) {
+        onAdFailedToLoad: (ad, _) {
           ad.dispose();
           _bannerLoaded = false;
           _onAdLoadFailed();
-          Future.delayed(const Duration(seconds: 20), () {
-            if (!PurchaseService.instance.adsRemoved) loadBanner(onLoaded: onLoaded);
-          });
+          Future.delayed(
+            const Duration(seconds: 20),
+            () => loadBanner(onLoaded: onLoaded),
+          );
         },
       ),
     )..load();
@@ -90,34 +126,27 @@ class AdService extends ChangeNotifier {
 
   // ── Interstitial ──────────────────────────────────────────────────────────
   InterstitialAd? _interstitialAd;
-  bool            _interstitialReady   = false;
-  bool            _interstitialLoading = false;
+  bool _interstitialReady = false;
 
   bool get interstitialReady => _interstitialReady;
 
   void loadInterstitial() {
     if (PurchaseService.instance.adsRemoved) return;
-    if (_interstitialLoading) return;
-
-    _interstitialReady   = false;
-    _interstitialLoading = true;
-
+    _interstitialReady = false;
     InterstitialAd.load(
       adUnitId: AdIds.interstitial,
-      request:  const AdRequest(),
+      request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
-          _interstitialAd      = ad;
-          _interstitialReady   = true;
-          _interstitialLoading = false;
+          _interstitialAd    = ad;
+          _interstitialReady = true;
           _onAdLoadSuccess();
-
           ad.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (a) {
               a.dispose();
               _interstitialAd    = null;
               _interstitialReady = false;
-              loadInterstitial(); // preload next immediately
+              loadInterstitial();
             },
             onAdFailedToShowFullScreenContent: (a, _) {
               a.dispose();
@@ -128,8 +157,7 @@ class AdService extends ChangeNotifier {
           );
         },
         onAdFailedToLoad: (_) {
-          _interstitialReady   = false;
-          _interstitialLoading = false;
+          _interstitialReady = false;
           _onAdLoadFailed();
           Future.delayed(const Duration(seconds: 15), loadInterstitial);
         },
@@ -137,8 +165,8 @@ class AdService extends ChangeNotifier {
     );
   }
 
-  /// Shows the interstitial. Waits up to 3s if still loading.
-  /// Skips silently if user purchased Remove Ads.
+  /// Shows interstitial. Waits up to 3s if still loading.
+  /// Skipped silently if user purchased Remove Ads.
   Future<void> showInterstitial({VoidCallback? onComplete}) async {
     if (PurchaseService.instance.adsRemoved) {
       onComplete?.call();
@@ -174,37 +202,28 @@ class AdService extends ChangeNotifier {
         onComplete?.call();
       },
     );
-
     await _interstitialAd!.show();
   }
 
   // ── Rewarded ──────────────────────────────────────────────────────────────
-  // Rewarded ads are gameplay mechanics — they show regardless of Remove Ads.
-  // (Remove Ads only removes passive ads: banner + interstitial.)
   RewardedAd? _rewardedAd;
-  bool        _rewardedReady   = false;
-  bool        _rewardedLoading = false;
+  bool _rewardedReady = false;
 
   bool get rewardedReady => _rewardedReady;
 
   void loadRewarded() {
-    if (_rewardedLoading) return;
-    _rewardedReady   = false;
-    _rewardedLoading = true;
-
+    _rewardedReady = false;
     RewardedAd.load(
       adUnitId: AdIds.rewarded,
-      request:  const AdRequest(),
+      request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
-          _rewardedAd     = ad;
-          _rewardedReady  = true;
-          _rewardedLoading = false;
+          _rewardedAd    = ad;
+          _rewardedReady = true;
           _onAdLoadSuccess();
         },
         onAdFailedToLoad: (_) {
-          _rewardedReady   = false;
-          _rewardedLoading = false;
+          _rewardedReady = false;
           _onAdLoadFailed();
           Future.delayed(const Duration(seconds: 15), loadRewarded);
         },
@@ -212,42 +231,30 @@ class AdService extends ChangeNotifier {
     );
   }
 
-  /// Shows a rewarded ad. Waits up to 3s if still loading.
-  /// Returns true if ad was shown and reward earned.
   Future<bool> showRewarded({
     required VoidCallback onRewarded,
     VoidCallback? onSkipped,
-    VoidCallback? onUnavailable,
   }) async {
-    // Wait up to 3s if loading
-    if (!_rewardedReady) {
-      for (int i = 0; i < 6; i++) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (_rewardedReady) break;
-      }
-    }
-
     if (!_rewardedReady || _rewardedAd == null) {
-      onUnavailable?.call();
+      onSkipped?.call();
       return false;
     }
 
     bool rewarded = false;
-
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
-        _rewardedAd     = null;
-        _rewardedReady  = false;
+        _rewardedAd    = null;
+        _rewardedReady = false;
         loadRewarded();
         if (!rewarded) onSkipped?.call();
       },
       onAdFailedToShowFullScreenContent: (ad, _) {
         ad.dispose();
-        _rewardedAd     = null;
-        _rewardedReady  = false;
+        _rewardedAd    = null;
+        _rewardedReady = false;
         loadRewarded();
-        onUnavailable?.call();
+        onSkipped?.call();
       },
     );
 
@@ -261,10 +268,12 @@ class AdService extends ChangeNotifier {
   }
 
   // ── Init / Dispose ────────────────────────────────────────────────────────
-  void init() {
+  Future<void> init() async {
     loadInterstitial();
     loadRewarded();
     loadBanner();
+    // Run DNS-level ad blocker check in background
+    _checkAdBlocker();
   }
 
   void disposeAds() {

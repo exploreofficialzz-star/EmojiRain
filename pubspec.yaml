@@ -19,7 +19,14 @@ dependencies:
   # ── NEW: In-App Purchases ─────────────────────────────────────────────────
   in_app_purchase: ^3.2.0
 
-  # Network awareness
+  # ── NEW: Real internet/data connection check (not just network type) ──────
+  # Verifies actual internet reachability — detects "WiFi connected, no data"
+  internet_connection_checker_plus: ^2.5.1
+
+  # ── NEW: Ad blocker detection (DNS-level + AdMob reachability check) ──────
+  adblock_detector: ^0.0.2
+
+  # Network type detection (wifi vs mobile vs none)
   connectivity_plus: ^6.0.3
 
   # Notifications
@@ -31,7 +38,7 @@ dependencies:
   # Animations
   flutter_animate: ^4.5.0
 
-  # Timezone (required by flutter_local_notifications for scheduled notifs)
+  # Timezone (required by flutter_local_notifications)
   timezone: ^0.9.4
 
   # Storage
@@ -54,12 +61,9 @@ flutter_launcher_icons:
   adaptive_icon_background: "#0a0a1a"
   adaptive_icon_foreground: "assets/images/icon.png"
   remove_alpha_ios: true
-  web:
-    generate: false
 
 flutter:
   uses-material-design: true
-
   assets:
     - assets/images/
     - assets/sounds/

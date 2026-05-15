@@ -15,11 +15,13 @@ import 'widgets/ad_blocker_overlay.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ── Orientation ────────────────────────────────────────────────────────────
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
+  // ── Status bar styling ─────────────────────────────────────────────────────
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor:                    Colors.transparent,
     statusBarIconBrightness:           Brightness.light,
@@ -27,22 +29,23 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // ── Network first — everything else depends on it ──────────────────────────
+  // ── 1. Network first — everything checks this ──────────────────────────────
   await NetworkService.instance.init();
 
-  // ── AdMob ──────────────────────────────────────────────────────────────────
+  // ── 2. AdMob SDK ──────────────────────────────────────────────────────────
   await MobileAds.instance.initialize();
 
-  // ── IAP — must be ready before AdService checks adsRemoved ────────────────
+  // ── 3. IAP — must be ready before AdService checks adsRemoved ─────────────
   await PurchaseService.instance.init();
 
-  // ── Ads ────────────────────────────────────────────────────────────────────
-  AdService.instance.init();
+  // ── 4. Ads — gated by PurchaseService.adsRemoved ──────────────────────────
+  //      Also runs DNS-level ad blocker check in background
+  await AdService.instance.init();
 
-  // ── Audio ──────────────────────────────────────────────────────────────────
+  // ── 5. Audio ──────────────────────────────────────────────────────────────
   await AudioService.instance.init();
 
-  // ── Notifications ──────────────────────────────────────────────────────────
+  // ── 6. Notifications ──────────────────────────────────────────────────────
   await NotificationService.instance.init();
 
   runApp(const EmojiRainApp());
@@ -55,10 +58,16 @@ class EmojiRainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Game state
         ChangeNotifierProvider(create: (_) => GameProvider()),
+
+        // IAP — drives Remove Ads gating across all screens
         ChangeNotifierProvider.value(value: PurchaseService.instance),
+
+        // Network — drives NetworkBanner + game pause overlay
         ChangeNotifierProvider.value(value: NetworkService.instance),
-        // AdService is ChangeNotifier so the ad blocker overlay reacts to it
+
+        // AdService — drives ad blocker overlay app-wide
         ChangeNotifierProvider.value(value: AdService.instance),
       ],
       child: MaterialApp(
@@ -66,13 +75,15 @@ class EmojiRainApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme:                      _buildTheme(),
         home:                       const HomeScreen(),
-        // App-level builder — places AdBlockerOverlay on top of everything
+
+        // ── App-level overlay builder ──────────────────────────────────────
+        // AdBlockerOverlay sits on top of everything — covers every screen.
+        // Only shown when ads are detected as blocked AND user hasn't
+        // purchased Remove Ads.
         builder: (context, child) {
           return Stack(
             children: [
               child!,
-              // Ad Blocker overlay sits above every screen — cannot be dismissed
-              // until user enables ads or purchases Remove Ads
               const AdBlockerOverlay(),
             ],
           );
