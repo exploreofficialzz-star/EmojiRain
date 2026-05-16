@@ -16,15 +16,11 @@ dependencies:
   # Ads
   google_mobile_ads: ^5.1.0
 
-  # ── NEW: In-App Purchases ─────────────────────────────────────────────────
+  # In-App Purchases
   in_app_purchase: ^3.2.0
 
-  # ── NEW: Real internet/data connection check (not just network type) ──────
-  # Verifies actual internet reachability — detects "WiFi connected, no data"
+  # Real internet/data connection check (not just network type)
   internet_connection_checker_plus: ^2.5.1
-
-  # ── NEW: Ad blocker detection (DNS-level + AdMob reachability check) ──────
-  adblock_detector: ^0.0.2
 
   # Network type detection (wifi vs mobile vs none)
   connectivity_plus: ^6.0.3
