@@ -63,3 +63,5 @@ flutter:
   assets:
     - assets/images/
     - assets/sounds/
+    -assets/adi-registration.properties
+    
