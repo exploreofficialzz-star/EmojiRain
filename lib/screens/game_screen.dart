@@ -8,6 +8,7 @@ import '../services/ad_service.dart';
 import '../services/network_service.dart';
 import '../services/purchase_service.dart';
 import '../widgets/falling_emoji_widget.dart';
+import '../widgets/powerup_hud.dart';
 import '../widgets/rule_display.dart';
 import '../widgets/score_hud.dart';
 import '../widgets/tap_effect_widget.dart';
@@ -41,7 +42,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   void _loadBanner() {
     if (PurchaseService.instance.adsRemoved) return;
     AdService.instance.loadBanner(
-      size: AdSize.banner,
+      size:     AdSize.banner,
       onLoaded: () {
         if (mounted) setState(() => _bannerLoaded = true);
       },
@@ -71,7 +72,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ── Network auto-pause / resume ────────────────────────────────────────────
   void _handleNetworkChange(GameProvider game, NetworkService net) {
     if (net.isOffline && game.isPlaying) {
       game.pauseGame();
@@ -82,7 +82,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ── Tap animation ──────────────────────────────────────────────────────────
   void _addTapEffect(double x, double y, bool isCorrect, String emoji) {
     final effect = TapEffect(
       x:     x,
@@ -134,14 +133,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         if (game.isGameOver) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && game.isGameOver) {
-              Navigator.of(context).pushReplacement(
-                PageRouteBuilder(
-                  pageBuilder:        (_, anim, __) => const GameOverScreen(),
-                  transitionsBuilder: (_, anim, __, child) =>
-                      FadeTransition(opacity: anim, child: child),
-                  transitionDuration: const Duration(milliseconds: 400),
-                ),
-              );
+              Navigator.of(context).pushReplacement(PageRouteBuilder(
+                pageBuilder:        (_, anim, __) => const GameOverScreen(),
+                transitionsBuilder: (_, anim, __, child) =>
+                    FadeTransition(opacity: anim, child: child),
+                transitionDuration: const Duration(milliseconds: 400),
+              ));
             }
           });
         }
@@ -150,29 +147,68 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           backgroundColor: AppColors.background,
           body: Column(
             children: [
-              // ── Game Area ─────────────────────────────────────────────
+              // ── Game Area ────────────────────────────────────────────
               Expanded(
                 child: SizedBox.expand(
                   child: Stack(
                     clipBehavior: Clip.hardEdge,
                     children: [
-                      // ── Background ──────────────────────────────────
+                      // ── Background ─────────────────────────────────
                       _GameBackground(level: game.level),
 
-                      // ── Falling emojis ───────────────────────────────
+                      // ── Slow-Mo tint overlay ───────────────────────
+                      if (game.slowMoActive)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(
+                              color: Colors.cyan.withOpacity(0.06),
+                            ).animate(onPlay: (c) => c.repeat(reverse: true))
+                             .custom(
+                               duration: 800.ms,
+                               builder: (_, v, child) => Opacity(
+                                 opacity: 0.03 + v * 0.06,
+                                 child: child,
+                               ),
+                             ),
+                          ),
+                        ),
+
+                      // ── Shield glow on wrong-tap absorb ────────────
+                      if (game.shieldActive)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppColors.accent.withOpacity(0.4),
+                                  width: 3,
+                                ),
+                              ),
+                            ).animate(onPlay: (c) => c.repeat(reverse: true))
+                             .custom(
+                               duration: 600.ms,
+                               builder: (_, v, child) => Opacity(
+                                 opacity: 0.2 + v * 0.5,
+                                 child: child,
+                               ),
+                             ),
+                          ),
+                        ),
+
+                      // ── Falling emojis ─────────────────────────────
                       ..._buildEmojis(game, screenSize),
 
-                      // ── Score popups ─────────────────────────────────
+                      // ── Score popups ───────────────────────────────
                       ..._buildScorePopups(),
 
-                      // ── Tap effect animations ─────────────────────────
+                      // ── Tap effect animations ──────────────────────
                       ..._tapEffects.map((effect) => TapEffectWidget(
                             key:        ValueKey(effect.id),
                             effect:     effect,
                             onComplete: () => _removeTapEffect(effect.id),
                           )),
 
-                      // ── HUD ──────────────────────────────────────────
+                      // ── HUD ────────────────────────────────────────
                       SafeArea(
                         bottom: false,
                         child: Column(
@@ -184,15 +220,25 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                               animateIn: _showLevelUp,
                             ),
                             const Spacer(),
+
+                            // ── Feature 4: Power-Up HUD ───────────────
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 20),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical:   10,
+                              ),
+                              child: PowerupHUD(game: game),
+                            ),
+
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
                               child: ComboStreakBadge(combo: game.combo),
                             ),
                           ],
                         ),
                       ),
 
-                      // ── Level Up Banner ───────────────────────────────
+                      // ── Level Up Banner ────────────────────────────
                       if (_showLevelUp)
                         Positioned.fill(
                           child: IgnorePointer(
@@ -202,7 +248,26 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                           ),
                         ),
 
-                      // ── Screen flash on wrong tap ─────────────────────
+                      // ── Heart Loss Flash (red border, not full screen) ─
+                      if (!game.isGameOver && game.hearts < GameConstants.maxHearts)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppColors.error.withOpacity(0.5),
+                                  width: 4,
+                                ),
+                              ),
+                            )
+                                .animate(key: ValueKey(game.hearts))
+                                .fadeIn(duration: 60.ms)
+                                .then()
+                                .fadeOut(duration: 400.ms),
+                          ),
+                        ),
+
+                      // ── Game Over flash ────────────────────────────
                       if (game.isGameOver)
                         Positioned.fill(
                           child: IgnorePointer(
@@ -214,11 +279,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                           ),
                         ),
 
-                      // ── Manual Pause Overlay ──────────────────────────
+                      // ── Manual Pause Overlay ───────────────────────
                       if (game.isPaused && !_pausedByNetwork)
                         _PauseOverlay(game: game),
 
-                      // ── Network Offline Overlay ───────────────────────
+                      // ── Network Offline Overlay ────────────────────
                       if (_pausedByNetwork)
                         _NetworkGameOverlay(
                           status:  net.status,
@@ -229,14 +294,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 ),
               ),
 
-              // ── Banner Ad — sits at the very bottom of the game ───────
+              // ── Banner Ad ─────────────────────────────────────────
               if (_bannerLoaded &&
                   AdService.instance.bannerAd != null &&
                   !purchase.adsRemoved)
                 Container(
                   color:     AppColors.background,
                   alignment: Alignment.center,
-                  width: AdService.instance.bannerAd!.size.width.toDouble(),
+                  width:  AdService.instance.bannerAd!.size.width.toDouble(),
                   height: AdService.instance.bannerAd!.size.height.toDouble(),
                   child: AdWidget(ad: AdService.instance.bannerAd!),
                 ),
@@ -258,7 +323,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         child: FallingEmojiWidget(
           emoji: e,
           onTap: () {
-            // Fire tap animation BEFORE calling game logic
             _addTapEffect(e.x, e.y, e.isTarget, e.emoji);
             game.onEmojiTapped(e);
           },
@@ -307,15 +371,18 @@ class _NetworkGameOverlay extends StatelessWidget {
                 const SizedBox(height: 24),
                 Text(
                   isNoInternet ? 'No Internet Connection' : 'No Data Available',
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900,
-                      color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   isNoInternet
                       ? 'Connect to Wi-Fi or enable\nmobile data to continue.'
                       : 'Connected but data isn\'t\nflowing. Check your mobile\ndata or Wi-Fi.',
-                  style: const TextStyle(fontSize: 15, color: Color(0xFFB0BEC5), height: 1.6),
+                  style: const TextStyle(
+                    fontSize: 15, color: Color(0xFFB0BEC5), height: 1.6,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
@@ -326,8 +393,10 @@ class _NetworkGameOverlay extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     border:       Border.all(color: Colors.white12),
                   ),
-                  child: const Text('⏸  Game paused — resumes automatically',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF78909C))),
+                  child: const Text(
+                    '⏸  Game paused — resumes automatically',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF78909C)),
+                  ),
                 ),
                 const SizedBox(height: 36),
                 GestureDetector(
@@ -338,7 +407,7 @@ class _NetworkGameOverlay extends StatelessWidget {
                       gradient:     AppColors.primaryBtnGradient,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [BoxShadow(
-                        color: AppColors.primary.withOpacity(0.3),
+                        color:      AppColors.primary.withOpacity(0.3),
                         blurRadius: 20, offset: const Offset(0, 6),
                       )],
                     ),
@@ -382,7 +451,10 @@ class _GameBackground extends StatelessWidget {
           ],
         ),
       ),
-      child: CustomPaint(size: Size.infinite, painter: _StarfieldPainter(seed: level)),
+      child: CustomPaint(
+        size:    Size.infinite,
+        painter: _StarfieldPainter(seed: level),
+      ),
     );
   }
 }
@@ -421,19 +493,31 @@ class _PauseOverlay extends StatelessWidget {
           decoration: BoxDecoration(
             color:        AppColors.surfaceCard,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+            border: Border.all(
+              color: AppColors.primary.withOpacity(0.4), width: 1.5,
+            ),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('⏸️', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 12),
             const Text('PAUSED', style: TextStyle(
-              fontSize:   28,
-              fontWeight: FontWeight.w900,
-              color:      AppColors.textPrimary,
-              letterSpacing: 3,
+              fontSize: 28, fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary, letterSpacing: 3,
             )),
             const SizedBox(height: 8),
             Text('Score: ${game.score}', style: AppTextStyles.bodyMedium),
+            const SizedBox(height: 4),
+            // Show hearts in pause overlay
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(GameConstants.maxHearts, (i) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Text(
+                  i < game.hearts ? '❤️' : '🖤',
+                  style: const TextStyle(fontSize: 18),
+                ),
+              )),
+            ),
             const SizedBox(height: 28),
             _btn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black,
                 () => game.resumeGame()),
@@ -456,7 +540,9 @@ class _PauseOverlay extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity, height: 52,
-        decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          gradient: gradient, borderRadius: BorderRadius.circular(16),
+        ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(icon, style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 8),

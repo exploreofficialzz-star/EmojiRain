@@ -7,9 +7,13 @@ import 'providers/game_provider.dart';
 import 'screens/home_screen.dart';
 import 'services/ad_service.dart';
 import 'services/audio_service.dart';
+import 'services/coin_service.dart';
+import 'services/leaderboard_service.dart';
 import 'services/network_service.dart';
 import 'services/notification_service.dart';
+import 'services/profile_service.dart';
 import 'services/purchase_service.dart';
+import 'services/streak_service.dart';
 import 'widgets/ad_blocker_overlay.dart';
 
 void main() async {
@@ -29,24 +33,35 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
 
-  // ── 1. Network first — everything checks this ──────────────────────────────
+  // ── 1. Network ────────────────────────────────────────────────────────────
   await NetworkService.instance.init();
 
-  // ── 2. AdMob SDK ──────────────────────────────────────────────────────────
+  // ── 2. AdMob SDK ─────────────────────────────────────────────────────────
   await MobileAds.instance.initialize();
 
-  // ── 3. IAP — must be ready before AdService checks adsRemoved ─────────────
+  // ── 3. IAP ───────────────────────────────────────────────────────────────
   await PurchaseService.instance.init();
 
-  // ── 4. Ads — gated by PurchaseService.adsRemoved ──────────────────────────
-  //      Also runs DNS-level ad blocker check in background
+  // ── 4. Ads ───────────────────────────────────────────────────────────────
   await AdService.instance.init();
 
-  // ── 5. Audio ──────────────────────────────────────────────────────────────
+  // ── 5. Audio ─────────────────────────────────────────────────────────────
   await AudioService.instance.init();
 
-  // ── 6. Notifications ──────────────────────────────────────────────────────
+  // ── 6. Notifications ─────────────────────────────────────────────────────
   await NotificationService.instance.init();
+
+  // ── 7. Coin wallet ───────────────────────────────────────────────────────
+  await CoinService.instance.init();
+
+  // ── 8. Daily streak ──────────────────────────────────────────────────────
+  await StreakService.instance.init();
+
+  // ── 9. Leaderboard engine ────────────────────────────────────────────────
+  await LeaderboardService.instance.init();
+
+  // ── 10. Player profile ───────────────────────────────────────────────────
+  await ProfileService.instance.init();
 
   runApp(const EmojiRainApp());
 }
@@ -58,17 +73,23 @@ class EmojiRainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Game state
+        // ── Core game state ───────────────────────────────────────────────
         ChangeNotifierProvider(create: (_) => GameProvider()),
 
-        // IAP — drives Remove Ads gating across all screens
+        // ── IAP — drives Remove Ads gating across all screens ─────────────
         ChangeNotifierProvider.value(value: PurchaseService.instance),
 
-        // Network — drives NetworkBanner + game pause overlay
+        // ── Network — drives NetworkBanner + game pause overlay ────────────
         ChangeNotifierProvider.value(value: NetworkService.instance),
 
-        // AdService — drives ad blocker overlay app-wide
+        // ── AdService — drives ad blocker overlay app-wide ────────────────
         ChangeNotifierProvider.value(value: AdService.instance),
+
+        // ── New feature services ──────────────────────────────────────────
+        ChangeNotifierProvider.value(value: CoinService.instance),
+        ChangeNotifierProvider.value(value: StreakService.instance),
+        ChangeNotifierProvider.value(value: LeaderboardService.instance),
+        ChangeNotifierProvider.value(value: ProfileService.instance),
       ],
       child: MaterialApp(
         title:                      'Emoji Rain',
@@ -76,10 +97,6 @@ class EmojiRainApp extends StatelessWidget {
         theme:                      _buildTheme(),
         home:                       const HomeScreen(),
 
-        // ── App-level overlay builder ──────────────────────────────────────
-        // AdBlockerOverlay sits on top of everything — covers every screen.
-        // Only shown when ads are detected as blocked AND user hasn't
-        // purchased Remove Ads.
         builder: (context, child) {
           return Stack(
             children: [

@@ -6,6 +6,8 @@ import '../constants/app_constants.dart';
 import '../constants/emoji_data.dart';
 import '../models/emoji_item.dart';
 import '../services/audio_service.dart';
+import '../services/coin_service.dart';
+import '../services/leaderboard_service.dart';
 
 enum GameState { idle, playing, paused, gameOver }
 
@@ -18,6 +20,7 @@ class ScoreEvent {
 }
 
 class GameProvider extends ChangeNotifier {
+  // ── Core game state ───────────────────────────────────────────────────────
   GameState        _state        = GameState.idle;
   List<EmojiItem>  _emojis       = [];
   List<ScoreEvent> _scoreEvents  = [];
@@ -33,6 +36,20 @@ class GameProvider extends ChangeNotifier {
   String _failMessage       = '';
   String _tappedEmoji       = '';
 
+  // ── Feature 1: Hearts / Lives ─────────────────────────────────────────────
+  int  _hearts        = GameConstants.maxHearts;
+
+  // ── Feature 2: Coin earning ───────────────────────────────────────────────
+  int  _sessionCoins  = 0;
+  bool _highScoreBonusAwarded = false;
+
+  // ── Feature 4: Power-Ups ──────────────────────────────────────────────────
+  bool   _shieldActive   = false;
+  bool   _slowMoActive   = false;
+  double _preSlowMoSpeed = GameConstants.speedBase;
+  Timer? _slowMoTimer;
+
+  // ── Internals ─────────────────────────────────────────────────────────────
   LevelConfig _currentLevel = LevelData.getLevel(1);
   double _screenWidth       = 390;
   double _screenHeight      = 844;
@@ -55,6 +72,11 @@ class GameProvider extends ChangeNotifier {
   int              get maxCombo               => _maxCombo;
   int              get level                  => _level;
   int              get levelSecondsLeft       => _levelSecondsLeft;
+  int              get hearts                 => _hearts;
+  int              get maxHearts              => GameConstants.maxHearts;
+  int              get sessionCoins           => _sessionCoins;
+  bool             get shieldActive           => _shieldActive;
+  bool             get slowMoActive           => _slowMoActive;
   bool             get isPlaying              => _state == GameState.playing;
   bool             get isPaused               => _state == GameState.paused;
   bool             get isGameOver             => _state == GameState.gameOver;
@@ -91,6 +113,11 @@ class GameProvider extends ChangeNotifier {
     _highScore = _score;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('high_score', _highScore);
+    // Award high-score bonus coins once per session
+    if (!_highScoreBonusAwarded) {
+      _highScoreBonusAwarded = true;
+      _sessionCoins += GameConstants.coinsNewHighScore;
+    }
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -98,21 +125,31 @@ class GameProvider extends ChangeNotifier {
     if (screenWidth  != null) _screenWidth  = screenWidth;
     if (screenHeight != null) _screenHeight = screenHeight;
 
-    _state            = GameState.playing;
-    _score            = 0;
-    _combo            = 0;
-    _maxCombo         = 0;
-    _level            = 1;
-    _emojis           = [];
-    _scoreEvents      = [];
-    _spawnAccum       = 0.0;
-    _currentSpeed     = GameConstants.speedBase;
-    _levelSecondsLeft = 60;
-    _showInterstitial = false;
-    _showRewarded     = false;
-    _currentLevel     = LevelData.getLevel(1);
-    _failMessage      = '';
-    _tappedEmoji      = '';
+    _state                 = GameState.playing;
+    _score                 = 0;
+    _combo                 = 0;
+    _maxCombo              = 0;
+    _level                 = 1;
+    _emojis                = [];
+    _scoreEvents           = [];
+    _spawnAccum            = 0.0;
+    _currentSpeed          = GameConstants.speedBase;
+    _levelSecondsLeft      = 60;
+    _showInterstitial      = false;
+    _showRewarded          = false;
+    _currentLevel          = LevelData.getLevel(1);
+    _failMessage           = '';
+    _tappedEmoji           = '';
+    // Feature 1
+    _hearts                = GameConstants.maxHearts;
+    // Feature 2
+    _sessionCoins          = 0;
+    _highScoreBonusAwarded = false;
+    // Feature 4
+    _shieldActive          = false;
+    _slowMoActive          = false;
+    _slowMoTimer?.cancel();
+    _slowMoTimer           = null;
 
     _startLoop();
     AudioService.instance.startBgm();
@@ -155,14 +192,17 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Keeps score and level — clears emojis and resumes play.
   /// Called after player watches full rewarded ad on game-over screen.
+  /// Restores all hearts and resumes play from current score/level.
   void continueAfterRewardedAd() {
     _emojis.clear();
     _scoreEvents.clear();
     _spawnAccum       = 0;
     _showRewarded     = false;
     _showInterstitial = false;
+    _hearts           = GameConstants.maxHearts;
+    _shieldActive     = false;
+    _slowMoActive     = false;
     _state            = GameState.playing;
     _startLoop();
     AudioService.instance.startBgm();
@@ -170,6 +210,52 @@ class GameProvider extends ChangeNotifier {
   }
 
   void clearScoreEvents() => _scoreEvents.clear();
+
+  // ── Feature 4: Power-Up Activation ───────────────────────────────────────
+
+  /// Activate Slow-Mo: reduces falling speed by 70% for 5 seconds.
+  /// Returns false if not enough coins.
+  Future<bool> activateSlowMo() async {
+    if (_state != GameState.playing || _slowMoActive) return false;
+    final spent = await CoinService.instance.spendCoins(GameConstants.slowMoCost);
+    if (!spent) return false;
+
+    _preSlowMoSpeed = _currentSpeed;
+    _currentSpeed   = _currentSpeed * GameConstants.slowMoFactor;
+    _slowMoActive   = true;
+    _slowMoTimer?.cancel();
+    _slowMoTimer = Timer(GameConstants.slowMoDuration, () {
+      if (_state == GameState.playing) {
+        _currentSpeed = _preSlowMoSpeed;
+        _slowMoActive = false;
+        notifyListeners();
+      }
+    });
+    notifyListeners();
+    return true;
+  }
+
+  /// Activate Shield: absorbs the next 1 wrong tap or missed target.
+  /// Returns false if not enough coins.
+  Future<bool> activateShield() async {
+    if (_state != GameState.playing || _shieldActive) return false;
+    final spent = await CoinService.instance.spendCoins(GameConstants.shieldCost);
+    if (!spent) return false;
+    _shieldActive = true;
+    notifyListeners();
+    return true;
+  }
+
+  /// Activate Clear Wave: removes all non-target emojis from screen.
+  /// Returns false if not enough coins.
+  Future<bool> activateClearWave() async {
+    if (_state != GameState.playing) return false;
+    final spent = await CoinService.instance.spendCoins(GameConstants.clearWaveCost);
+    if (!spent) return false;
+    _emojis.removeWhere((e) => e.isFalling && !e.isTarget);
+    notifyListeners();
+    return true;
+  }
 
   // ── Game Loop ─────────────────────────────────────────────────────────────
   void _startLoop() {
@@ -202,14 +288,18 @@ class GameProvider extends ChangeNotifier {
     _gameTimer?.cancel();
     _spawnTimer?.cancel();
     _levelTimer?.cancel();
+    _slowMoTimer?.cancel();
     _gameTimer = _spawnTimer = _levelTimer = null;
   }
 
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
-    _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
-        .clamp(GameConstants.speedBase, GameConstants.speedMax);
+    // Only grow speed if not in slow-mo (slow-mo timer handles restoration)
+    if (!_slowMoActive) {
+      _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
+          .clamp(GameConstants.speedBase, GameConstants.speedMax);
+    }
 
     for (final e in _emojis) {
       if (e.isFalling) { e.speed = _currentSpeed; e.y += _currentSpeed * dt; }
@@ -293,10 +383,23 @@ class GameProvider extends ChangeNotifier {
       if (!e.isFalling || e.y <= _screenHeight + e.size / 2) continue;
       e.state = EmojiState.missed;
       if (e.isTarget) {
+        // Feature 1: lose a heart instead of instant game over
+        if (_shieldActive) {
+          _shieldActive = false;
+          notifyListeners();
+          return;
+        }
+        _hearts--;
+        _combo       = 0;
         _failMessage = FailMessages.getForMissedTarget(e.emoji);
         _tappedEmoji = e.emoji;
-        AudioService.instance.play(SoundEffect.gameover);
-        _triggerGameOver();
+        if (_hearts <= 0) {
+          AudioService.instance.play(SoundEffect.gameover);
+          _triggerGameOver();
+        } else {
+          AudioService.instance.play(SoundEffect.wrong);
+          notifyListeners();
+        }
         return;
       }
     }
@@ -309,8 +412,13 @@ class GameProvider extends ChangeNotifier {
     if (emoji.isTarget) {
       _combo++;
       if (_combo > _maxCombo) _maxCombo = _combo;
+
       final pts = 10 * comboMultiplier;
       _score += pts;
+
+      // Feature 2: earn coins scaled by combo
+      _sessionCoins += GameConstants.coinsPerTap * comboMultiplier;
+
       _scoreEvents.add(ScoreEvent(
         points: pts, x: emoji.x, y: emoji.y,
         isCombo: _combo >= GameConstants.combo2x,
@@ -319,12 +427,26 @@ class GameProvider extends ChangeNotifier {
         _combo >= GameConstants.combo2x ? SoundEffect.combo : SoundEffect.correct,
       );
     } else {
-      // Wrong tap — instant game over
+      // Feature 1: wrong tap loses a heart, not instant game over
+      // Feature 4: shield absorbs the hit
+      if (_shieldActive) {
+        _shieldActive = false;
+        notifyListeners();
+        return;
+      }
+
+      _hearts--;
+      _combo       = 0;
       _tappedEmoji = emoji.emoji;
       _failMessage = FailMessages.getForWrongTap(emoji.emoji);
-      _combo       = 0;
-      AudioService.instance.play(SoundEffect.wrong);
-      _triggerGameOver();
+
+      if (_hearts <= 0) {
+        AudioService.instance.play(SoundEffect.wrong);
+        _triggerGameOver();
+      } else {
+        AudioService.instance.play(SoundEffect.wrong);
+        notifyListeners();
+      }
     }
   }
 
@@ -337,6 +459,8 @@ class GameProvider extends ChangeNotifier {
       _currentSpeed = _currentLevel.baseSpeed
           .clamp(GameConstants.speedBase, GameConstants.speedMax);
     }
+    // Feature 2: bonus coins per level
+    _sessionCoins += GameConstants.coinsPerLevelUp * _level;
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();
   }
@@ -345,10 +469,20 @@ class GameProvider extends ChangeNotifier {
     _stopTimers();
     _state            = GameState.gameOver;
     _failCount++;
+    _slowMoTimer?.cancel();
     AudioService.instance.stopBgm();
     _saveHighScore();
-    _showInterstitial = true;          // always show interstitial
-    _showRewarded     = _score > 0;    // offer continue if player scored anything
+
+    // Feature 2: persist earned coins
+    if (_sessionCoins > 0) {
+      CoinService.instance.addCoins(_sessionCoins);
+    }
+
+    // Feature 6: submit score to leaderboard engine
+    LeaderboardService.instance.submitScore(_score);
+
+    _showInterstitial = true;
+    _showRewarded     = true; // always offer — hearts system makes it meaningful
     notifyListeners();
   }
 

@@ -6,8 +6,13 @@ import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
 import '../services/ad_service.dart';
 import '../services/audio_service.dart';
+import '../services/coin_service.dart';
 import '../services/notification_service.dart';
+import '../services/purchase_service.dart';
+import '../services/streak_service.dart';
+import '../widgets/daily_reward_modal.dart';
 import 'game_screen.dart';
+import 'leaderboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,6 +39,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     NotificationService.instance.cancelComeback();
+
+    // Feature 3: check daily streak after frame renders
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkDailyStreak());
   }
 
   @override
@@ -42,10 +50,27 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+  Future<void> _checkDailyStreak() async {
+    if (!mounted) return;
+    if (StreakService.instance.canClaimToday) {
+      await showDailyRewardModal(context);
+    }
+  }
+
   void _startGame(BuildContext context) {
     AudioService.instance.play(SoundEffect.tap);
     Navigator.of(context).push(PageRouteBuilder(
-      pageBuilder: (_, anim, __) => const GameScreen(),
+      pageBuilder:        (_, anim, __) => const GameScreen(),
+      transitionsBuilder: (_, anim, __, child) =>
+          FadeTransition(opacity: anim, child: child),
+      transitionDuration: const Duration(milliseconds: 350),
+    ));
+  }
+
+  void _openLeaderboard(BuildContext context) {
+    AudioService.instance.play(SoundEffect.tap);
+    Navigator.of(context).push(PageRouteBuilder(
+      pageBuilder:        (_, anim, __) => const LeaderboardScreen(),
       transitionsBuilder: (_, anim, __, child) =>
           FadeTransition(opacity: anim, child: child),
       transitionDuration: const Duration(milliseconds: 350),
@@ -54,7 +79,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final game = context.watch<GameProvider>();
+    final game     = context.watch<GameProvider>();
+    final purchase = context.watch<PurchaseService>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -68,20 +94,25 @@ class _HomeScreenState extends State<HomeScreen>
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 12),
+                      // ── Top bar: Coin balance + Streak ───────────────
+                      _buildTopBar(context),
+                      const SizedBox(height: 20),
                       _buildLogo(),
-                      const SizedBox(height: 32),
-                      _buildEmojiShowcase(),
                       const SizedBox(height: 28),
+                      _buildEmojiShowcase(),
+                      const SizedBox(height: 24),
                       _buildHighScore(game),
-                      const SizedBox(height: 36),
+                      const SizedBox(height: 28),
+                      // ── Leaderboard teaser banner ─────────────────────
+                      _buildLeaderboardBanner(context),
+                      const SizedBox(height: 28),
                       _buildStartButton(context),
                       const SizedBox(height: 20),
                       _buildSoundToggle(),
                       const SizedBox(height: 16),
                       _buildFakeStats(),
                       const SizedBox(height: 36),
-                      // ── "by ChAs" branding ──────────────────────────
                       _buildByChAs(),
                       const SizedBox(height: 24),
                     ],
@@ -91,12 +122,14 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // ── Banner Ad ─────────────────────────────────────────────────
-          if (_bannerLoaded && AdService.instance.bannerAd != null)
+          // ── Banner Ad ──────────────────────────────────────────────────
+          if (_bannerLoaded &&
+              AdService.instance.bannerAd != null &&
+              !purchase.adsRemoved)
             Container(
-              color: AppColors.background,
+              color:     AppColors.background,
               alignment: Alignment.center,
-              width: AdService.instance.bannerAd!.size.width.toDouble(),
+              width:  AdService.instance.bannerAd!.size.width.toDouble(),
               height: AdService.instance.bannerAd!.size.height.toDouble(),
               child: AdWidget(ad: AdService.instance.bannerAd!),
             ),
@@ -105,21 +138,150 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ── Top Bar (Coins + Streak) ───────────────────────────────────────────────
+  Widget _buildTopBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Coin balance
+          ListenableBuilder(
+            listenable: CoinService.instance,
+            builder: (_, __) => _CoinBadge(
+              balance: CoinService.instance.formattedBalance,
+            ),
+          ),
+
+          // Daily streak badge
+          ListenableBuilder(
+            listenable: StreakService.instance,
+            builder: (_, __) {
+              final streak = StreakService.instance.streak;
+              final can    = StreakService.instance.canClaimToday;
+              return GestureDetector(
+                onTap: can
+                    ? () => showDailyRewardModal(context)
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: can
+                        ? AppColors.primary.withOpacity(0.15)
+                        : AppColors.surfaceCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: can
+                          ? AppColors.primary.withOpacity(0.5)
+                          : Colors.white.withOpacity(0.1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        can ? '🎁' : '🔥',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        can
+                            ? 'Claim!'
+                            : streak > 0 ? '${streak}d streak' : 'Daily',
+                        style: TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w800,
+                          color: can
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+                  .animate(target: can ? 1 : 0)
+                  .shimmer(
+                    duration: 1200.ms,
+                    color: AppColors.primary.withOpacity(0.6),
+                  );
+            },
+          ),
+        ],
+      ).animate().fadeIn(duration: 400.ms),
+    );
+  }
+
+  // ── Leaderboard Teaser Banner ──────────────────────────────────────────────
+  Widget _buildLeaderboardBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openLeaderboard(context),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF1A1A40),
+              AppColors.primary.withOpacity(0.12),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.primary.withOpacity(0.4),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            const Text('🏆', style: TextStyle(fontSize: 28)),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'LEADERBOARD',
+                    style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w900,
+                      color: AppColors.primary, letterSpacing: 1.5,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Compete daily · Prizes up to \$50',
+                    style: TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.primary,
+              size: 22,
+            ),
+          ],
+        ),
+      )
+          .animate()
+          .fadeIn(delay: 550.ms, duration: 500.ms)
+          .shimmer(delay: 2500.ms, duration: 1800.ms, color: AppColors.primaryGlow),
+    );
+  }
+
   // ── Logo ───────────────────────────────────────────────────────────────────
   Widget _buildLogo() {
     return Column(
       children: [
-        // Game icon
         Container(
-          width: 120,
-          height: 120,
+          width: 120, height: 120,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
                 color: AppColors.primary.withOpacity(0.45),
-                blurRadius: 36,
-                spreadRadius: 6,
+                blurRadius: 36, spreadRadius: 6,
               ),
             ],
           ),
@@ -138,23 +300,20 @@ class _HomeScreenState extends State<HomeScreen>
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .scale(
               begin: const Offset(1.0, 1.0),
-              end: const Offset(1.05, 1.05),
+              end:   const Offset(1.05, 1.05),
               duration: 1600.ms,
               curve: Curves.easeInOut,
             ),
 
         const SizedBox(height: 20),
 
-        // EMOJI RAIN title
         ShaderMask(
           shaderCallback: (b) => AppColors.goldGradient.createShader(b),
           child: const Text(
             'EMOJI RAIN',
             style: TextStyle(
-              fontSize: 46,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: 2,
+              fontSize: 46, fontWeight: FontWeight.w900,
+              color: Colors.white, letterSpacing: 2,
             ),
           ),
         )
@@ -167,10 +326,8 @@ class _HomeScreenState extends State<HomeScreen>
         Text(
           'FOCUS  OR  FAIL',
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: AppColors.accent.withOpacity(0.9),
-            letterSpacing: 5,
+            fontSize: 13, fontWeight: FontWeight.w700,
+            color: AppColors.accent.withOpacity(0.9), letterSpacing: 5,
           ),
         ).animate().fadeIn(duration: 600.ms, delay: 400.ms),
       ],
@@ -184,18 +341,17 @@ class _HomeScreenState extends State<HomeScreen>
       height: 72,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: emojis.length,
+        itemCount:       emojis.length,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemBuilder: (_, i) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 5),
           child: Text(emojis[i], style: const TextStyle(fontSize: 40))
               .animate(
-                delay: Duration(milliseconds: i * 90),
+                delay:   Duration(milliseconds: i * 90),
                 onPlay: (c) => c.repeat(reverse: true),
               )
               .moveY(
-                begin: 0,
-                end: -12,
+                begin: 0, end: -12,
                 duration: Duration(milliseconds: 750 + i * 70),
                 curve: Curves.easeInOut,
               ),
@@ -225,10 +381,8 @@ class _HomeScreenState extends State<HomeScreen>
               const Text(
                 'BEST SCORE',
                 style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 2,
+                  fontSize: 10, fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary, letterSpacing: 2,
                 ),
               ),
               Text('${game.highScore}', style: AppTextStyles.scoreText),
@@ -257,9 +411,8 @@ class _HomeScreenState extends State<HomeScreen>
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.50),
-                blurRadius: 24,
-                spreadRadius: 2,
+                color:      AppColors.primary.withOpacity(0.50),
+                blurRadius: 24, spreadRadius: 2,
                 offset: const Offset(0, 8),
               ),
             ],
@@ -272,10 +425,8 @@ class _HomeScreenState extends State<HomeScreen>
               Text(
                 'PLAY NOW',
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.black,
-                  letterSpacing: 1.5,
+                  fontSize: 22, fontWeight: FontWeight.w900,
+                  color: Colors.black, letterSpacing: 1.5,
                 ),
               ),
             ],
@@ -284,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     ).animate().fadeIn(delay: 600.ms).scale(
           begin: const Offset(0.8, 0.8),
-          end: const Offset(1, 1),
+          end:   const Offset(1, 1),
           duration: 500.ms,
           curve: Curves.elasticOut,
         );
@@ -373,8 +524,7 @@ class _HomeScreenState extends State<HomeScreen>
               TextSpan(
                 text: 'by ',
                 style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
+                  fontSize: 13, fontWeight: FontWeight.w400,
                   color: AppColors.textSecondary.withOpacity(0.7),
                   letterSpacing: 1,
                 ),
@@ -382,10 +532,8 @@ class _HomeScreenState extends State<HomeScreen>
               const TextSpan(
                 text: 'ChAs',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primary,
-                  letterSpacing: 2,
+                  fontSize: 14, fontWeight: FontWeight.w800,
+                  color: AppColors.primary, letterSpacing: 2,
                 ),
               ),
             ],
@@ -393,8 +541,43 @@ class _HomeScreenState extends State<HomeScreen>
         )
             .animate()
             .fadeIn(delay: 1200.ms, duration: 800.ms)
-            .shimmer(delay: 2000.ms, duration: 2000.ms, color: AppColors.primaryGlow),
+            .shimmer(
+              delay: 2000.ms, duration: 2000.ms,
+              color: AppColors.primaryGlow,
+            ),
       ],
+    );
+  }
+}
+
+// ── Coin Badge ─────────────────────────────────────────────────────────────────
+class _CoinBadge extends StatelessWidget {
+  final String balance;
+  const _CoinBadge({required this.balance});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('🪙', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 5),
+          Text(
+            balance,
+            style: const TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w900,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
