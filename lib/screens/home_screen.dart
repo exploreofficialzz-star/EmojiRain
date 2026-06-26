@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -24,7 +25,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  bool _bannerLoaded = false;
+  bool   _bannerLoaded = false;
+  Timer? _statsTimer;
 
   @override
   void initState() {
@@ -40,6 +42,12 @@ class _HomeScreenState extends State<HomeScreen>
 
     NotificationService.instance.cancelComeback();
 
+    // Refresh stats every 90 s so numbers shift while user watches
+    _statsTimer = Timer.periodic(
+      const Duration(seconds: 90),
+      (_) { if (mounted) setState(() {}); },
+    );
+
     // Feature 3: check daily streak after frame renders
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkDailyStreak());
   }
@@ -47,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _statsTimer?.cancel();
     super.dispose();
   }
 
@@ -136,6 +145,31 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+
+  // ── Dynamic stat calculations — all driven by current UTC time ────────────
+  String get _dynamicGamesPlayed {
+    final now         = DateTime.now().toUtc();
+    final minsIntoDay = now.hour * 60 + now.minute;
+    final fraction    = minsIntoDay / 1440.0;
+    final base        = (fraction * (2 - fraction) * 3400000).round();
+    final jitter      = ((now.minute ~/ 3) * 11743) % 28000;
+    final total       = (base + jitter).clamp(84000, 3400000);
+    if (total >= 1000000) return '${(total / 1000000).toStringAsFixed(1)}M';
+    return '${(total / 1000).toStringAsFixed(0)}K';
+  }
+
+  int get _dynamicAvgScore {
+    final seed = DateTime.now().toUtc().minute ~/ 5;
+    return 81 + (seed * 13) % 18;
+  }
+
+  String get _dynamicSurvivalStat {
+    final seed  = DateTime.now().toUtc().minute ~/ 7;
+    final pct   = 3 + (seed * 7) % 7;
+    final level = 5 + (seed % 2);
+    return 'Only $pct% reach level $level';
   }
 
   // ── Top Bar (Coins + Streak) ───────────────────────────────────────────────
@@ -479,11 +513,11 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildFakeStats() {
     return Column(
       children: [
-        _statBadge('👥', '2.4M games played today'),
+        _statBadge('👥', '$_dynamicGamesPlayed games played today'),
         const SizedBox(height: 8),
-        _statBadge('🏆', 'Average score: 87 points'),
+        _statBadge('🏆', 'Average score: $_dynamicAvgScore points'),
         const SizedBox(height: 8),
-        _statBadge('🔥', 'Only 6% reach level 5'),
+        _statBadge('🔥', _dynamicSurvivalStat),
       ],
     ).animate().fadeIn(delay: 800.ms, duration: 600.ms);
   }

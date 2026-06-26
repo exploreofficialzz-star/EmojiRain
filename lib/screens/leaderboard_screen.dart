@@ -87,8 +87,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           _buildPlayerCard(),
                           const SizedBox(height: 20),
                           _buildSubmitBtn(),
-                          const SizedBox(height: 12),
-                          _buildDisclaimerText(),
                         ],
                       ),
                     );
@@ -441,16 +439,4 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     );
   }
 
-  // ── Disclaimer ─────────────────────────────────────────────────────────────
-  Widget _buildDisclaimerText() {
-    return Text(
-      'Leaderboard resets daily at midnight UTC.\nPrize payouts activate in a future update.',
-      style: TextStyle(
-        fontSize: 10,
-        color: AppColors.textSecondary.withOpacity(0.5),
-        height: 1.6,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
 }
