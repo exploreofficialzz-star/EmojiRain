@@ -36,8 +36,11 @@ void main() async {
   // ── 1. Network ────────────────────────────────────────────────────────────
   await NetworkService.instance.init();
 
-  // ── 2. AdMob SDK ─────────────────────────────────────────────────────────
+// ── 2. AdMob SDK ─────────────────────────────────────────────────────────
   await MobileAds.instance.initialize();
+
+  // ── Paystack ─────────────────────────────────────────────────────────────
+  await PaystackCheckout.initialize();
 
   // ── 3. IAP ───────────────────────────────────────────────────────────────
   await PurchaseService.instance.init();
