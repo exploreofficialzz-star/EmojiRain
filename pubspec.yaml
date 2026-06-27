@@ -43,6 +43,9 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.8
 
+  # Paystack
+  flutter_paystack: ^1.0.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -64,4 +67,3 @@ flutter:
     - assets/images/
     - assets/sounds/
     - assets/adi-registration.properties
-    
