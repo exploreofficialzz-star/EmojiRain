@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
+import 'install_source_service.dart';
 
 class PurchaseService extends ChangeNotifier {
   PurchaseService._();
@@ -30,14 +31,21 @@ class PurchaseService extends ChangeNotifier {
   Future<void> init() async {
     await _checkSavedExpiry();
 
-    _storeAvailable = await InAppPurchase.instance.isAvailable();
+    // ── Install source detection ───────────────────────────────────────────
+    // IMPORTANT: Do NOT use InAppPurchase.instance.isAvailable() here.
+    // That API returns true on any Android device with Google Play Services
+    // installed — including sideloaded APKs — causing purchases to fail with
+    // "item could not be found". We check the real installer package instead.
+    _storeAvailable = await InstallSourceService.isFromPlayStore();
     _billingChecked = true;
 
     if (!_storeAvailable) {
+      // Not from Play Store → Paystack handles all purchases.
       notifyListeners();
       return;
     }
 
+    // ── Google Play Billing (Play Store installs only) ────────────────────
     _sub = InAppPurchase.instance.purchaseStream.listen(
       _handlePurchaseUpdate,
       onError: (dynamic e) {
@@ -83,7 +91,7 @@ class PurchaseService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Google Play / App Store IAP ───────────────────────────────────────────
+  // ── Google Play IAP purchase ──────────────────────────────────────────────
   Future<void> buy(String productId) async {
     _error = null;
     final matches = _products.where((p) => p.id == productId).toList();
