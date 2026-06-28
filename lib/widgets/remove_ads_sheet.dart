@@ -5,8 +5,7 @@ import '../constants/app_constants.dart';
 import '../services/network_service.dart';
 import '../services/purchase_service.dart';
 import '../services/paystack_service.dart';
-import 'paystack_checkout.dart';  // FIX: was '../services/paystack_checkout.dart' (wrong path — file lives in widgets/)
-import 'unlock_code_dialog.dart';
+import 'paystack_checkout.dart';
 
 // ── Show helper ───────────────────────────────────────────────────────────────
 void showRemoveAdsSheet(BuildContext context) {
@@ -65,8 +64,8 @@ class RemoveAdsSheet extends StatelessWidget {
                   ],
 
                   // ── Smart routing ─────────────────────────────────────
-                  // Google Play installed  →  IAP flow (existing)
-                  // Sideloaded / other store → Paystack popup
+                  // Google Play installed  →  IAP flow
+                  // Sideloaded / other store → Paystack flow
                   if (purchase.storeAvailable)
                     _buildPlayStoreFlow(context, purchase, net)
                   else
@@ -210,7 +209,7 @@ class RemoveAdsSheet extends StatelessWidget {
 
         const SizedBox(height: 8),
 
-        // Powered by Paystack badge
+        // Powered by Paystack
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -226,58 +225,6 @@ class RemoveAdsSheet extends StatelessWidget {
             ),
           ],
         ),
-
-        const SizedBox(height: 14),
-
-        // Divider
-        Row(children: [
-          const Expanded(child: Divider(color: Colors.white10)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              'Already bought?',
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors.textSecondary.withOpacity(0.55),
-              ),
-            ),
-          ),
-          const Expanded(child: Divider(color: Colors.white10)),
-        ]),
-
-        const SizedBox(height: 12),
-
-        // Unlock code button
-        GestureDetector(
-          onTap: () async {
-            Navigator.of(context).pop();
-            await showUnlockCodeDialog(context);
-          },
-          child: Container(
-            width: double.infinity, height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceCard,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.35), width: 1.5,
-              ),
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('🔑', style: TextStyle(fontSize: 17)),
-                SizedBox(width: 8),
-                Text(
-                  'Enter Unlock Code',
-                  style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ).animate().fadeIn(delay: 300.ms),
 
         const SizedBox(height: 14),
 
@@ -371,9 +318,7 @@ class RemoveAdsSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFE65100).withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFF9800).withOpacity(0.4),
-        ),
+        border: Border.all(color: const Color(0xFFFF9800).withOpacity(0.4)),
       ),
       child: Row(children: [
         const Text('📶', style: TextStyle(fontSize: 20)),
@@ -400,9 +345,7 @@ class RemoveAdsSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFB71C1C).withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFEF5350).withOpacity(0.4),
-        ),
+        border: Border.all(color: const Color(0xFFEF5350).withOpacity(0.4)),
       ),
       child: Row(children: [
         const Text('⚠️', style: TextStyle(fontSize: 18)),
@@ -491,7 +434,7 @@ class _PaystackTierCard extends StatelessWidget {
   }
 }
 
-// ── Shared card building helpers ──────────────────────────────────────────────
+// ── Shared card helpers ───────────────────────────────────────────────────────
 Widget _cardBody({
   required String  icon,
   required String  label,

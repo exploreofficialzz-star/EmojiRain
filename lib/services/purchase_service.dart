@@ -3,14 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
-import 'unlock_code_validator.dart';
 
 class PurchaseService extends ChangeNotifier {
   PurchaseService._();
   static final PurchaseService instance = PurchaseService._();
 
-  static const String _expiryKey     = 'remove_ads_expiry_ms';
-  static const String _codeActiveKey = 'unlock_code_active';
+  static const String _expiryKey = 'remove_ads_expiry_ms';
 
   StreamSubscription<List<PurchaseDetails>>? _sub;
   List<ProductDetails> _products       = [];
@@ -21,13 +19,13 @@ class PurchaseService extends ChangeNotifier {
   bool                 _storeAvailable = false;
   bool                 _billingChecked = false;
 
-  List<ProductDetails> get products        => List.unmodifiable(_products);
-  bool                 get adsRemoved      => _adsRemoved;
-  DateTime?            get expiry          => _expiry;
-  bool                 get loading         => _loading;
-  String?              get error           => _error;
-  bool                 get storeAvailable  => _storeAvailable;
-  bool                 get billingChecked  => _billingChecked;
+  List<ProductDetails> get products       => List.unmodifiable(_products);
+  bool                 get adsRemoved     => _adsRemoved;
+  DateTime?            get expiry         => _expiry;
+  bool                 get loading        => _loading;
+  String?              get error          => _error;
+  bool                 get storeAvailable => _storeAvailable;
+  bool                 get billingChecked => _billingChecked;
 
   Future<void> init() async {
     await _checkSavedExpiry();
@@ -63,7 +61,6 @@ class PurchaseService extends ChangeNotifier {
 
     if (!_adsRemoved) {
       await prefs.remove(_expiryKey);
-      await prefs.remove(_codeActiveKey);
       _expiry = null;
     }
     notifyListeners();
@@ -137,14 +134,6 @@ class PurchaseService extends ChangeNotifier {
     final duration = IAPIds.durations[productId];
     if (duration == null) return;
     await _applyDuration(duration);
-  }
-
-  // ── Unlock code activation ────────────────────────────────────────────────
-  Future<void> activateUnlockCode(UnlockCodeResult result) async {
-    if (!result.isValid || result.duration == null) return;
-    await _applyDuration(result.duration!);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_codeActiveKey, true);
   }
 
   // ── Core: apply duration to the remove-ads timer ──────────────────────────
