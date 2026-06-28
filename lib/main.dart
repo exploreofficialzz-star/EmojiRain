@@ -15,6 +15,7 @@ import 'services/profile_service.dart';
 import 'services/purchase_service.dart';
 import 'services/streak_service.dart';
 import 'widgets/ad_blocker_overlay.dart';
+import 'widgets/paystack_checkout.dart'; // FIX: was missing — PaystackCheckout.initialize() is called below
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,34 +37,34 @@ void main() async {
   // ── 1. Network ────────────────────────────────────────────────────────────
   await NetworkService.instance.init();
 
-// ── 2. AdMob SDK ─────────────────────────────────────────────────────────
+  // ── 2. AdMob SDK ─────────────────────────────────────────────────────────
   await MobileAds.instance.initialize();
 
-  // ── Paystack ─────────────────────────────────────────────────────────────
+  // ── 3. Paystack ──────────────────────────────────────────────────────────
   await PaystackCheckout.initialize();
 
-  // ── 3. IAP ───────────────────────────────────────────────────────────────
+  // ── 4. IAP ───────────────────────────────────────────────────────────────
   await PurchaseService.instance.init();
 
-  // ── 4. Ads ───────────────────────────────────────────────────────────────
+  // ── 5. Ads ───────────────────────────────────────────────────────────────
   await AdService.instance.init();
 
-  // ── 5. Audio ─────────────────────────────────────────────────────────────
+  // ── 6. Audio ─────────────────────────────────────────────────────────────
   await AudioService.instance.init();
 
-  // ── 6. Notifications ─────────────────────────────────────────────────────
+  // ── 7. Notifications ─────────────────────────────────────────────────────
   await NotificationService.instance.init();
 
-  // ── 7. Coin wallet ───────────────────────────────────────────────────────
+  // ── 8. Coin wallet ───────────────────────────────────────────────────────
   await CoinService.instance.init();
 
-  // ── 8. Daily streak ──────────────────────────────────────────────────────
+  // ── 9. Daily streak ──────────────────────────────────────────────────────
   await StreakService.instance.init();
 
-  // ── 9. Leaderboard engine ────────────────────────────────────────────────
+  // ── 10. Leaderboard engine ───────────────────────────────────────────────
   await LeaderboardService.instance.init();
 
-  // ── 10. Player profile ───────────────────────────────────────────────────
+  // ── 11. Player profile ───────────────────────────────────────────────────
   await ProfileService.instance.init();
 
   runApp(const EmojiRainApp());

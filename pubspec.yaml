@@ -43,8 +43,10 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.8
 
-  # Paystack
-  flutter_paystack: ^1.0.4
+  # Paystack — WebView-based inline popup.
+  # Replaces flutter_paystack which required http ^0.13.x, conflicting
+  # with internet_connection_checker_plus >=2.0.0 (needs http ^1.0.0).
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

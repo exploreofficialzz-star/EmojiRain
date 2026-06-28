@@ -3,9 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../services/network_service.dart';
-import '../services/paystack_checkout.dart';
-import '../services/paystack_service.dart';
 import '../services/purchase_service.dart';
+import '../services/paystack_service.dart';
+import 'paystack_checkout.dart';  // FIX: was '../services/paystack_checkout.dart' (wrong path — file lives in widgets/)
 import 'unlock_code_dialog.dart';
 
 // ── Show helper ───────────────────────────────────────────────────────────────
