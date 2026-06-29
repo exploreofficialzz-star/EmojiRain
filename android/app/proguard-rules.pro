@@ -6,6 +6,13 @@
 -keep class com.google.android.gms.ads.** { *; }
 -keep class com.google.ads.** { *; }
 
+# Unity Ads mediation adapter + SDK
+-keep class com.unity3d.ads.** { *; }
+-keep class com.unity3d.services.** { *; }
+-keep class com.google.ads.mediation.unity.** { *; }
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+
 # Audioplayers
 -keep class xyz.luan.audioplayers.** { *; }
 
@@ -17,3 +24,4 @@
 
 -dontwarn com.google.android.gms.**
 -dontwarn io.flutter.**
+-dontwarn com.unity3d.**
