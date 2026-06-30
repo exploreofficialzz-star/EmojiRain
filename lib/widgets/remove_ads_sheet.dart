@@ -239,23 +239,43 @@ class RemoveAdsSheet extends StatelessWidget {
   }
 
   // ── Launch Paystack and handle result ─────────────────────────────────────
+  //
+  // CRITICAL: We pop this sheet immediately below, which unmounts `context`'s
+  // own widget within the current frame. Two things in this function used to
+  // depend on that now-dead context and would silently fail as a result:
+  //   1. PaystackCheckout.pay() received the dead context, so once the user
+  //      finished entering their email the flow hit an early "cancelled"
+  //      return and the payment page never opened.
+  //   2. Even on a successful payment, `activatePaystackPurchase()` was
+  //      gated behind `context.mounted`, so a completed Paystack payment
+  //      could finish and STILL never unlock ads for the player.
+  //
+  // Fix: capture a context tied to the app's root Navigator BEFORE popping.
+  // That context belongs to the Navigator MaterialApp itself creates, so it
+  // stays valid for the whole app session. Purchase activation is now never
+  // gated behind any context check at all — it's a singleton service call
+  // and doesn't need a BuildContext to run correctly.
   Future<void> _handlePaystackTap(
     BuildContext context,
     String productId,
   ) async {
+    final BuildContext rootContext =
+        Navigator.of(context, rootNavigator: true).context;
+
     Navigator.of(context).pop();
 
     final result = await PaystackCheckout.pay(
-      context,
+      rootContext,
       productId: productId,
     );
 
-    if (!result.isSuccess || !context.mounted) return;
+    if (!result.isSuccess) return;
 
+    // Always activate on success — never gate this behind context.mounted.
     await PurchaseService.instance.activatePaystackPurchase(productId);
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    if (rootContext.mounted) {
+      ScaffoldMessenger.of(rootContext).showSnackBar(SnackBar(
         content: Row(children: [
           const Text('🎉', style: TextStyle(fontSize: 18)),
           const SizedBox(width: 10),

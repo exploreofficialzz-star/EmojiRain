@@ -14,6 +14,17 @@
 //   3. Full-screen page — payment now uses Navigator.push (fullscreenDialog)
 //      instead of showModalBottomSheet so fixed-position elements in the
 //      Paystack iframe are not clipped by the sheet boundaries.
+//
+//   4. STALE-CONTEXT FIX (critical) — callers like RemoveAdsSheet pop their
+//      own bottom sheet immediately before calling pay(context, ...). By the
+//      time the user finishes typing their email, that original `context`
+//      has long since unmounted, so the old `if (!context.mounted) return
+//      cancelled;` check silently killed the entire flow right after email
+//      entry — the payment page never opened. Fixed by capturing the ROOT
+//      Navigator's own BuildContext ONCE, synchronously, at the very start
+//      of pay() — before any await runs. That context belongs to the
+//      Navigator created by MaterialApp itself, which stays mounted for the
+//      entire app session regardless of what the caller's own sheet does.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -70,8 +81,18 @@ class PaystackCheckout {
       return const PaystackPaymentResult(status: PaystackPaymentStatus.cancelled);
     }
 
+    // ── Capture a STABLE context tied to the root Navigator itself ─────────
+    // Must happen synchronously, right here, before any `await`. Callers
+    // (e.g. RemoveAdsSheet) commonly pop their own bottom sheet immediately
+    // before/after invoking pay() — which unmounts their `context` partway
+    // through this function. `rootContext` instead belongs to the Navigator
+    // MaterialApp itself creates, so it remains valid for the whole app
+    // session no matter what the caller's sheet does.
+    final BuildContext rootContext =
+        Navigator.of(context, rootNavigator: true).context;
+
     // ── Step 1: collect email ─────────────────────────────────────────────
-    final email = await _collectEmail(context);
+    final email = await _collectEmail(rootContext);
     if (email == null || email.isEmpty) {
       return PaystackPaymentResult(
         status:    PaystackPaymentStatus.cancelled,
@@ -79,14 +100,18 @@ class PaystackCheckout {
       );
     }
 
-    if (!context.mounted) {
-      return const PaystackPaymentResult(status: PaystackPaymentStatus.cancelled);
+    if (!rootContext.mounted) {
+      return PaystackPaymentResult(
+        status:    PaystackPaymentStatus.cancelled,
+        productId: productId,
+      );
     }
 
     // ── Step 2: open full-screen payment page ─────────────────────────────
     final reference = PaystackService.generateReference(productId);
 
-    final result = await Navigator.of(context, rootNavigator: true).push<PaystackPaymentResult>(
+    final result = await Navigator.of(rootContext, rootNavigator: true)
+        .push<PaystackPaymentResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => _PaystackPage(
