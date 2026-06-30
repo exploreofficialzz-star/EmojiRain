@@ -6,10 +6,9 @@
 //      email before opening the payment page. Email is saved in
 //      SharedPreferences so they don't have to re-enter it next time.
 //
-//   2. Loading fix — switched from Paystack's container mode (embedded div)
-//      to openIframe() popup mode. Container mode rendered a blank div in
-//      Android WebView. The popup mode opens Paystack's own full-screen
-//      overlay inside the WebView, which renders correctly on all devices.
+//   2. Popup mode — uses Paystack's own in-page popup UI (rendered via
+//      InlineJS v2's `newTransaction()`) rather than embedding a custom
+//      container div. Renders correctly across Android WebView versions.
 //
 //   3. Full-screen page — payment now uses Navigator.push (fullscreenDialog)
 //      instead of showModalBottomSheet so fixed-position elements in the
@@ -25,6 +24,19 @@
 //      of pay() — before any await runs. That context belongs to the
 //      Navigator created by MaterialApp itself, which stays mounted for the
 //      entire app session regardless of what the caller's own sheet does.
+//   5. ROOT CAUSE OF "Could not load payment" FIXED — the JS was calling
+//      `PaystackPop.newTransaction({...})` as a static method then
+//      `.openIframe()` on the result. Neither exists in InlineJS v2; both
+//      are V1 API leftovers. Confirmed against Paystack's own v2 docs: you
+//      must do `new Paystack()` (or `new PaystackPop()` — Paystack's own
+//      docs are inconsistent about the name, so both are checked at
+//      runtime) then call `.newTransaction({...})` on that INSTANCE, which
+//      renders the popup automatically — no separate "open" call exists in
+//      v2. The old static call threw a TypeError immediately, silently
+//      swallowed by the try/catch into the generic error screen. Also fixed
+//      `ref` → `reference` (the real v2 param — `ref` was being silently
+//      ignored), added `onError`/`onLoad` handlers, and a 12s safety
+//      timeout so a stalled load fails loudly instead of spinning forever.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -365,7 +377,11 @@ class _PaystackPageState extends State<_PaystackPage> {
         onPageFinished:     (_) { if (mounted) setState(() => _loading = false); },
         onWebResourceError: (_) { if (mounted) setState(() => _loading = false); },
       ))
-      ..loadHtmlString(_buildHtml());
+      // baseUrl gives this page a REAL origin (Paystack's own domain) instead
+      // of the opaque/null origin loadHtmlString produces by default. Without
+      // this, Paystack's checkout iframe can fail same-origin/postMessage
+      // checks during its internal redirects (3DS, bank OTP, etc.).
+      ..loadHtmlString(_buildHtml(), baseUrl: 'https://checkout.paystack.com');
   }
 
   void _onMessage(JavaScriptMessage msg) {
@@ -413,12 +429,32 @@ class _PaystackPageState extends State<_PaystackPage> {
     ));
   }
 
-  // ── HTML: openIframe() popup mode ─────────────────────────────────────────
+  // ── HTML: correct InlineJS v2 API ─────────────────────────────────────────
   //
-  // Unlike container mode (which embeds into a div), openIframe() creates
-  // Paystack's own fixed-position overlay inside the WebView viewport.
-  // This renders correctly on all Android WebView versions.
+  // ROOT CAUSE OF "Could not load payment": this code was calling
+  // `PaystackPop.newTransaction({...})` as a static method, then
+  // `.openIframe()` on the result. Neither exists in InlineJS v2 — both are
+  // leftover V1 API shapes. Confirmed against Paystack's own v2 reference
+  // docs (paystack.com/docs/developer-tools/inlinejs): you must INSTANTIATE
+  // the popup first (`new Paystack()`), then call `.newTransaction({...})`
+  // on that instance — which renders the popup automatically. There is no
+  // separate "open" step in v2. Calling `PaystackPop.newTransaction` as a
+  // static method threw a TypeError immediately (newTransaction only exists
+  // on the instance prototype), which our try/catch silently swallowed into
+  // the generic "Could not load payment" screen.
   //
+  // Also fixed: `ref` → `reference` (the actual v2 param name — `ref` was
+  // being silently ignored, so Paystack was generating its own reference
+  // instead of ours), added `onError` (genuine payment-time failures now
+  // surface instead of hanging silently) and `onLoad` (fires once the
+  // popup UI itself is actually visible — used to hide the splash screen
+  // precisely, with a 12s safety-timeout fallback in case it never fires).
+  //
+  // Defensive: checks for both `Paystack` (current official docs) and
+  // `PaystackPop` (older docs/migration guide reference the same name) since
+  // Paystack's own documentation is inconsistent about which name the CDN
+  // script exposes — this works correctly regardless of which is actually
+  // defined at runtime.
   String _buildHtml() {
     final pk  = widget.publicKey;
     final em  = widget.email;
@@ -482,33 +518,63 @@ class _PaystackPageState extends State<_PaystackPage> {
   <script src="https://js.paystack.co/v2/inline.js"
           onerror="showError()"></script>
   <script>
+    var done = false;
+
     function send(obj) {
+      if (done) return;
+      done = true;
       window.FlutterBridge.postMessage(JSON.stringify(obj));
     }
     function goBack()    { send({ event: 'cancelled' }); }
     function showError() {
+      if (done) return;
       document.getElementById('splash').style.display    = 'none';
       document.getElementById('error-box').style.display = 'flex';
     }
 
     window.addEventListener('load', function () {
-      if (typeof PaystackPop === 'undefined') { showError(); return; }
-      document.getElementById('splash').style.display = 'none';
+      // Defensive: official Paystack docs use `Paystack` as the v2
+      // constructor name, but their own migration guide uses `PaystackPop`.
+      // Accept whichever the loaded script actually defines.
+      var Ctor = (typeof Paystack !== 'undefined') ? Paystack
+               : (typeof PaystackPop !== 'undefined' ? PaystackPop : null);
+
+      if (!Ctor) { showError(); return; }
+
       try {
-        var handler = PaystackPop.newTransaction({
+        var popup = new Ctor();
+
+        // Safety net: if the popup UI never reports onLoad within 12s
+        // (network stall, blocked resource, etc.), fail loudly instead of
+        // spinning forever with no feedback.
+        var safetyTimer = setTimeout(function () {
+          if (!done) showError();
+        }, 12000);
+
+        popup.newTransaction({
           key:       '$pk',
           email:     '$em',
           amount:    $amt,
           currency:  '$cur',
-          ref:       '$ref',
-          onSuccess: function (t) {
-            send({ event: 'success', reference: t.reference || '$ref' });
+          reference: '$ref',
+          onLoad: function () {
+            // Popup UI is actually visible now — clear the splash.
+            clearTimeout(safetyTimer);
+            document.getElementById('splash').style.display = 'none';
+          },
+          onSuccess: function (transaction) {
+            send({ event: 'success', reference: transaction.reference || '$ref' });
           },
           onCancel: function () {
             send({ event: 'cancelled' });
+          },
+          onError: function (error) {
+            send({
+              event:   'failed',
+              message: (error && error.message) ? error.message : 'unknown_error'
+            });
           }
         });
-        handler.openIframe();
       } catch (err) {
         showError();
       }

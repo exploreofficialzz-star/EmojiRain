@@ -269,6 +269,28 @@ class RemoveAdsSheet extends StatelessWidget {
       productId: productId,
     );
 
+    // Cancelled = the user backed out intentionally, no message needed.
+    // Failed = something actually went wrong (e.g. Paystack's onError) —
+    // worth a brief heads-up so it doesn't look like nothing happened.
+    if (result.status == PaystackPaymentStatus.failed) {
+      if (rootContext.mounted) {
+        ScaffoldMessenger.of(rootContext).showSnackBar(const SnackBar(
+          content: Text(
+            'Payment failed. Please try again.',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+          backgroundColor: Color(0xFFB71C1C),
+          behavior:        SnackBarBehavior.floating,
+          margin:  EdgeInsets.fromLTRB(20, 0, 20, 24),
+          shape:   RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+          duration: Duration(seconds: 3),
+        ));
+      }
+      return;
+    }
+
     if (!result.isSuccess) return;
 
     // Always activate on success — never gate this behind context.mounted.
