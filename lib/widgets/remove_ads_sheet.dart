@@ -464,11 +464,12 @@ class _PaystackTierCard extends StatelessWidget {
       onTap: onTap,
       child: Stack(clipBehavior: Clip.none, children: [
         _cardBody(
-          icon:     tier.icon,
-          label:    tier.label,
-          desc:     tier.description,
-          isBest:   tier.isBest,
-          trailing: _priceChip(tier.displayPrice, tier.isBest),
+          icon:      tier.icon,
+          label:     tier.label,
+          desc:      tier.description,
+          isBest:    tier.isBest,
+          trailing:  _priceChip(tier.displayPrice, tier.isBest),
+          priceHint: tier.nairaHint,
         ),
         if (tier.isBest) _bestBadge(),
       ]),
@@ -483,6 +484,7 @@ Widget _cardBody({
   required String  desc,
   required bool    isBest,
   required Widget  trailing,
+  String?          priceHint,
 }) {
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
@@ -512,7 +514,18 @@ Widget _cardBody({
           )),
         ],
       )),
-      trailing,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          trailing,
+          if (priceHint != null) ...[
+            const SizedBox(height: 4),
+            Text(priceHint, style: TextStyle(
+              fontSize: 10, color: Colors.white.withOpacity(0.35),
+            )),
+          ],
+        ],
+      ),
     ]),
   );
 }

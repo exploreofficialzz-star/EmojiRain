@@ -133,7 +133,7 @@ class PaystackCheckout {
           currency:   PaystackService.currency,
           reference:  reference,
           productId:  productId,
-          tierLabel:  tier.label,
+          tierLabel:  '${tier.label} · ${tier.displayPrice}',
         ),
       ),
     );

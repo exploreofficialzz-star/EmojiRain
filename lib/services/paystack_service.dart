@@ -21,38 +21,45 @@ class PaystackService {
   static const String currency = 'NGN';
 
   // ── Payment tiers ─────────────────────────────────────────────────────────
-  // Amounts are in KOBO (smallest NGN unit). 1 Naira = 100 Kobo.
-  // ₦1,500 = 150,000 kobo | ₦4,500 = 450,000 kobo | ₦13,500 = 1,350,000 kobo
+  // displayPrice is what the USER SEES on the tier card — shown in USD so it
+  // matches the Play Store pricing ($0.99 / $2.99 / $8.99) and reads the same
+  // regardless of which payment path a player ends up on.
   //
-  // These map directly to the Play Store IAP prices ($0.99 / $2.99 / $8.99)
-  // at roughly ~1,500 NGN/USD, rounded to clean Naira figures for pricing
-  // psychology. Both the tier card display AND the actual amount sent to
-  // Paystack below read from this single source — there's no separate
-  // "display price" vs "charged price" path, so they can never drift apart.
+  // amountKobo / currency are what's ACTUALLY CHARGED — always NGN, since
+  // this Paystack account is Nigeria-only (see `currency` above). Paystack's
+  // own checkout screen will show the Naira amount (e.g. "₦1,500.00") once
+  // the user taps through — that's expected, not a bug. nairaHint is a small
+  // secondary label on the tier card so that transition isn't a surprise.
+  //
+  // If the USD price ever changes, update displayPrice here — amountKobo is
+  // independent and won't auto-recalculate from it.
   static const Map<String, PaystackTier> tiers = {
     'emoji_rain_no_ads_day': PaystackTier(
-      label:       '1 Day',
-      description: 'Perfect for a quick session',
-      icon:        '☀️',
-      amountKobo:  150000,   // ₦1,500  (≈ $0.99)
-      displayPrice: '₦1,500',
-      isBest:      false,
+      label:        '1 Day',
+      description:  'Perfect for a quick session',
+      icon:         '☀️',
+      amountKobo:   150000,   // charged amount: ₦1,500
+      displayPrice: r'$0.99',
+      nairaHint:    '≈₦1,500',
+      isBest:       false,
     ),
     'emoji_rain_no_ads_week': PaystackTier(
-      label:       '1 Week',
-      description: 'Most popular — great value',
-      icon:        '🌟',
-      amountKobo:  450000,   // ₦4,500  (≈ $2.99)
-      displayPrice: '₦4,500',
-      isBest:      true,
+      label:        '1 Week',
+      description:  'Most popular — great value',
+      icon:         '🌟',
+      amountKobo:   450000,   // charged amount: ₦4,500
+      displayPrice: r'$2.99',
+      nairaHint:    '≈₦4,500',
+      isBest:       true,
     ),
     'emoji_rain_no_ads_month': PaystackTier(
-      label:       '1 Month',
-      description: 'Best deal for dedicated players',
-      icon:        '👑',
-      amountKobo:  1350000,  // ₦13,500 (≈ $8.99)
-      displayPrice: '₦13,500',
-      isBest:      false,
+      label:        '1 Month',
+      description:  'Best deal for dedicated players',
+      icon:         '👑',
+      amountKobo:   1350000,  // charged amount: ₦13,500
+      displayPrice: r'$8.99',
+      nairaHint:    '≈₦13,500',
+      isBest:       false,
     ),
   };
 
@@ -82,6 +89,7 @@ class PaystackTier {
   final String icon;
   final int    amountKobo;
   final String displayPrice;
+  final String nairaHint;
   final bool   isBest;
 
   const PaystackTier({
@@ -90,6 +98,7 @@ class PaystackTier {
     required this.icon,
     required this.amountKobo,
     required this.displayPrice,
+    required this.nairaHint,
     required this.isBest,
   });
 }
