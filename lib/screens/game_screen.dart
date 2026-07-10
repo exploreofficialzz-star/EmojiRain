@@ -38,6 +38,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
+import '../constants/emoji_data.dart';   // FIX: LevelConfig lives here
 import '../models/emoji_item.dart';
 import '../providers/game_provider.dart';
 import '../services/ad_service.dart';

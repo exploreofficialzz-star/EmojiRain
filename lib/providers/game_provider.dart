@@ -338,6 +338,29 @@ class GameProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Remove all non-target falling emojis from the screen.
+  /// Optimised vs original: manual pass updates _fallingCount and returns
+  /// items to the pool — no hidden list allocation from removeWhere().
+  Future<bool> activateClearWave() async {
+    if (_state != GameState.playing) return false;
+    final spent = await CoinService.instance.spendCoins(GameConstants.clearWaveCost);
+    if (!spent) return false;
+
+    int i = 0;
+    while (i < _emojis.length) {
+      final e = _emojis[i];
+      if (e.isFalling && !e.isTarget) {
+        EmojiItem.pool.release(e);
+        _emojis.removeAt(i);
+        _fallingCount--;
+      } else {
+        i++;
+      }
+    }
+    notifyListeners();
+    return true;
+  }
+
   // ── Game Loop ─────────────────────────────────────────────────────────────
   void _startLoop() {
     _stopTimers();
