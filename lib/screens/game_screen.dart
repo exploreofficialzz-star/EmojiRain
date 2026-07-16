@@ -31,6 +31,17 @@
 //
 // 6. GestureDetector closures are stable — capture emoji.id for the
 //    ValueKey rather than using the mutable EmojiItem reference directly.
+//
+// 7. BUGFIX (network soft-lock): network pause/resume used to live inside
+//    _onGameStateChange, which only runs when GameProvider itself notifies.
+//    _pausedByNetwork was also mutated without setState(), so the overlay
+//    could desync from reality. Worst case: once paused, GameProvider
+//    cancels its timers and never notifies again on its own, so recovery
+//    could never be detected — the game got stuck offline forever, even
+//    after real connectivity returned. Now handled by _onNetworkChange(),
+//    a dedicated listener registered directly on NetworkService, fully
+//    independent of GameProvider's timer/notify state. See that method for
+//    the full explanation.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
@@ -87,6 +98,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       }
       // FIX 3: listen for game-state changes OUTSIDE build()
       context.read<GameProvider>().addListener(_onGameStateChange);
+
+      // FIX (network soft-lock): network pause/resume now has its OWN
+      // listener, completely independent of GameProvider's notify cycle.
+      // See _onNetworkChange() below for why this was necessary.
+      context.read<NetworkService>().addListener(_onNetworkChange);
+
+      // Cover the case where the screen mounts while ALREADY offline —
+      // addListener() doesn't retroactively fire, so without this the
+      // game would start playing unaware it has no connection until the
+      // next connectivity change event.
+      _onNetworkChange();
     });
   }
 
@@ -119,16 +141,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       }
     }
 
-    // Network pause
-    final net = context.read<NetworkService>();
-    if (net.isOffline && game.isPlaying) {
-      game.pauseGame();
-      _pausedByNetwork = true;
-    } else if (net.isOnline && _pausedByNetwork && game.isPaused) {
-      _pausedByNetwork = false;
-      game.resumeGame();
-    }
-
     // FIX 2: game-over navigation — run once, guarded
     if (game.isGameOver && !_navigatingAway) {
       _navigatingAway = true;
@@ -142,6 +154,46 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           ));
         }
       });
+    }
+  }
+
+  // ── Network pause/resume — DEDICATED listener ─────────────────────────────
+  //
+  // BUG THIS FIXES: this logic used to live inside _onGameStateChange, which
+  // only runs as a side-effect of GameProvider's OWN notifyListeners() calls.
+  // That created two compounding problems:
+  //
+  //   1. _pausedByNetwork was mutated WITHOUT calling setState(). Since it's
+  //      a plain State field (not observed by any Provider/Selector), the
+  //      overlay conditionals reading it in build() would only refresh on
+  //      some UNRELATED coincidental rebuild — meaning the network overlay
+  //      could silently fail to appear, or fail to disappear, depending on
+  //      timing luck.
+  //
+  //   2. Once game.pauseGame() runs, GameProvider cancels ALL its timers —
+  //      the only things that were ever calling notifyListeners(). From
+  //      that point on, GameProvider never notifies again on its own, so
+  //      _onGameStateChange could never re-run — meaning the "network back
+  //      online, resume" branch could never be re-evaluated. The game got
+  //      stuck paused FOREVER, even after real connectivity returned, even
+  //      after tapping "Check Connection" (which only touches NetworkService,
+  //      and nothing was listening to NetworkService to react to it).
+  //
+  // Fix: this is now NetworkService's own listener, registered in initState
+  // and fully independent of GameProvider's state. It fires the instant
+  // NetworkService changes status, whether or not the game loop is running,
+  // and always goes through setState() so the overlay stays in sync.
+  void _onNetworkChange() {
+    if (!mounted) return;
+    final net  = context.read<NetworkService>();
+    final game = context.read<GameProvider>();
+
+    if (net.isOffline && game.isPlaying) {
+      game.pauseGame();
+      setState(() => _pausedByNetwork = true);
+    } else if (net.isOnline && _pausedByNetwork && game.isPaused) {
+      setState(() => _pausedByNetwork = false);
+      game.resumeGame();
     }
   }
 
@@ -161,6 +213,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     AdService.instance.disposeBanner();
     // FIX 3: remove the listener we added in initState
     context.read<GameProvider>().removeListener(_onGameStateChange);
+    context.read<NetworkService>().removeListener(_onNetworkChange);
     _scoreEvents.dispose();
     _tapEffects.dispose();
     super.dispose();
