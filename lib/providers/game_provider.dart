@@ -144,16 +144,19 @@ class GameProvider extends ChangeNotifier {
   Timer? _spawnTimer;
   Timer? _levelTimer;
 
-  // ── Throttled notify — max 60 fps ─────────────────────────────────────────
-  // FIX 1: prevents >60 rebuilds/sec without losing responsiveness.
-  int _lastNotifyMs = 0;
-  void _notifyThrottled() {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastNotifyMs >= 16) {
-      _lastNotifyMs = now;
-      notifyListeners();
-    }
-  }
+  // NOTE: no separate notify-throttle here. _update() is invoked from a
+  // Timer.periodic(16ms) (see _startLoop below) — already effectively
+  // capped at ~60Hz by construction. A previous revision added a SEPARATE
+  // wall-clock 16ms throttle gate on top of that, which caused visible
+  // stutter: Dart's Timer.periodic doesn't fire at exactly 16.0ms every
+  // time (real jitter — sometimes 14ms, sometimes 19ms apart depending on
+  // event-loop load). Whenever two ticks landed less than 16ms apart, the
+  // throttle would SILENTLY SKIP that tick's notifyListeners() call — but
+  // the emoji's position had already moved that tick regardless. The next
+  // tick would then notify with TWO ticks' worth of accumulated movement
+  // at once, producing an uneven small-step/big-jump/small-step motion
+  // pattern. Removed — notifyListeners() now fires directly every physics
+  // tick, matching the driving timer's own natural ~60Hz rate exactly.
 
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
@@ -431,8 +434,10 @@ class GameProvider extends ChangeNotifier {
       i++;
     }
 
-    // FIX 1: throttled — rebuilds UI at most 60x/sec regardless of tick rate
-    _notifyThrottled();
+    // Direct notify — see note above on why this isn't (and shouldn't be)
+    // separately throttled. The driving Timer.periodic(16ms) already caps
+    // this to ~60Hz naturally.
+    notifyListeners();
   }
 
   // ── Spawn ─────────────────────────────────────────────────────────────────

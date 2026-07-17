@@ -48,6 +48,21 @@ dependencies:
   # with internet_connection_checker_plus >=2.0.0 (needs http ^1.0.0).
   webview_flutter: ^4.10.0
 
+  # Custom game background — lets the player pick a photo from their
+  # gallery to use as the falling-emoji background instead of the default
+  # starfield. On Android 13+, image_picker uses the system Photo Picker,
+  # which needs NO runtime storage permission at all. On older Android
+  # versions it requests read access itself via its own manifest merge —
+  # no manual AndroidManifest.xml changes needed for either case.
+  image_picker: ^1.1.2
+
+  # Copies the picked image into the app's own persistent documents
+  # directory. Required because image_picker's returned path is a
+  # temporary cache location not guaranteed to survive an app restart —
+  # copying it into a stable, app-controlled location is the reliable way
+  # to keep a "wallpaper" set across sessions.
+  path_provider: ^2.1.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -48,6 +48,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
 import '../constants/app_constants.dart';
 import '../constants/emoji_data.dart';   // FIX: LevelConfig lives here
 import '../models/emoji_item.dart';
@@ -55,6 +56,7 @@ import '../providers/game_provider.dart';
 import '../services/ad_service.dart';
 import '../services/network_service.dart';
 import '../services/purchase_service.dart';
+import '../services/wallpaper_service.dart';
 import '../widgets/falling_emoji_widget.dart';
 import '../widgets/powerup_hud.dart';
 import '../widgets/rule_display.dart';
@@ -699,6 +701,28 @@ class _GameBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Custom wallpaper takes priority over the default starfield. This is
+    // its own narrow Selector so a wallpaper change doesn't require any
+    // GameProvider notify to take effect, and a level change doesn't
+    // re-evaluate the wallpaper path unnecessarily.
+    return Selector<WallpaperService, String?>(
+      selector: (_, w) => w.customPath,
+      builder: (_, customPath, __) {
+        if (customPath != null) {
+          return _CustomWallpaperBackground(path: customPath);
+        }
+        return _DefaultStarfieldBackground(level: level);
+      },
+    );
+  }
+}
+
+class _DefaultStarfieldBackground extends StatelessWidget {
+  final int level;
+  const _DefaultStarfieldBackground({required this.level});
+
+  @override
+  Widget build(BuildContext context) {
     final intensity = (level / 10).clamp(0.0, 1.0);
     return RepaintBoundary(   // Isolate background — it never changes mid-level
       child: Container(
@@ -716,6 +740,35 @@ class _GameBackground extends StatelessWidget {
           size:    Size.infinite,
           painter: _StarfieldPainter(seed: level),
         ),
+      ),
+    );
+  }
+}
+
+// Renders a player-chosen photo as the game background. A dark scrim sits
+// on top so falling emojis and HUD text stay readable regardless of how
+// bright or busy the chosen photo is — without it, a light-colored photo
+// could make white text/HUD elements unreadable.
+class _CustomWallpaperBackground extends StatelessWidget {
+  final String path;
+  const _CustomWallpaperBackground({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            // Falls back to the plain dark background if the file somehow
+            // became unreadable (corrupted, removed externally, etc.)
+            // instead of crashing or showing a broken-image icon mid-game.
+            errorBuilder: (_, __, ___) => Container(color: AppColors.background),
+          ),
+          Container(color: Colors.black.withOpacity(0.45)),
+        ],
       ),
     );
   }
@@ -780,6 +833,10 @@ class _PauseOverlay extends StatelessWidget {
             _btn('RESUME', '▶️', AppColors.primaryBtnGradient, Colors.black,
                 () => game.resumeGame()),
             const SizedBox(height: 12),
+            _btn('BACKGROUND', '🖼️',
+                const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
+                Colors.white, () => _showBackgroundSheet(context)),
+            const SizedBox(height: 12),
             _btn('QUIT', '🏠',
                 const LinearGradient(colors: [Color(0xFF2A2A4A), Color(0xFF1A1A35)]),
                 Colors.white, () {
@@ -810,6 +867,157 @@ class _PauseOverlay extends StatelessWidget {
           )),
         ]),
       ),
+    );
+  }
+}
+
+// ── Background picker sheet ───────────────────────────────────────────────────
+void _showBackgroundSheet(BuildContext context) {
+  showModalBottomSheet(
+    context:            context,
+    isScrollControlled: true,
+    backgroundColor:    Colors.transparent,
+    builder: (_) => ChangeNotifierProvider.value(
+      value: WallpaperService.instance,
+      child: const _BackgroundPickerSheet(),
+    ),
+  );
+}
+
+class _BackgroundPickerSheet extends StatelessWidget {
+  const _BackgroundPickerSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<WallpaperService>(
+      builder: (context, wallpaper, _) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color:        Color(0xFF12122A),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              border: Border(top: BorderSide(color: Color(0xFF2A2A50), width: 1)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color:        Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                const Text('🖼️  Game Background', style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white,
+                )),
+                const SizedBox(height: 6),
+                const Text(
+                  'Use a photo from your gallery as the\nbackground while you play.',
+                  style: TextStyle(
+                    fontSize: 13, color: Color(0xFF78909C), height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+
+                if (wallpaper.error != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB71C1C).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFEF5350).withOpacity(0.4),
+                      ),
+                    ),
+                    child: Row(children: [
+                      const Text('⚠️', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(wallpaper.error!, style: const TextStyle(
+                          fontSize: 12, color: Color(0xFFEF9A9A),
+                        )),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // Choose Photo
+                GestureDetector(
+                  onTap: wallpaper.busy ? null : () async {
+                    final ok = await wallpaper.pickFromGallery();
+                    if (ok && context.mounted) Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    width: double.infinity, height: 52,
+                    decoration: BoxDecoration(
+                      gradient:     AppColors.primaryBtnGradient,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Center(
+                      child: wallpaper.busy
+                          ? const SizedBox(
+                              width: 22, height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5, color: Colors.black,
+                              ),
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('📷', style: TextStyle(fontSize: 18)),
+                                SizedBox(width: 8),
+                                Text('Choose Photo', style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w800,
+                                  color: Colors.black,
+                                )),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+
+                // Reset to Default — only shown when a custom wallpaper is active
+                if (wallpaper.hasCustomWallpaper) ...[
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: wallpaper.busy ? null : () async {
+                      await wallpaper.resetToDefault();
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      width: double.infinity, height: 52,
+                      decoration: BoxDecoration(
+                        color:        const Color(0xFF1A1A35),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('🔄', style: TextStyle(fontSize: 16)),
+                          SizedBox(width: 8),
+                          Text('Reset to Default', style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w700,
+                            color: Colors.white70,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
