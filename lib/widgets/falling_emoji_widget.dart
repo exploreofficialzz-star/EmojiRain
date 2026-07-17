@@ -1,34 +1,44 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/widgets/falling_emoji_widget.dart — OPTIMISED
+// lib/widgets/falling_emoji_widget.dart — REVISED
 //
-// PERFORMANCE FIXES vs original:
+// FIX (rendering bug): this widget used to wrap its content in its OWN
+// `Positioned`, but every caller (see _EmojiLayer in game_screen.dart)
+// already wraps FallingEmojiWidget in an OUTER `Positioned` to place it in
+// the Stack. That meant every emoji had TWO nested Positioned widgets, and
+// the inner one had no direct Stack ancestor — an invalid ParentDataWidget
+// usage that Flutter's own docs call out as a hard "Incorrect use of
+// ParentDataWidget" error in debug builds, and silently gets its position
+// data ignored in release/profile builds (assertions stripped). This widget
+// now returns its raw content only; the outer Positioned in _EmojiLayer is
+// the single source of truth for where each emoji sits.
 //
-// 1. RepaintBoundary wraps every emoji — Flutter won't repaint siblings when
-//    a single emoji moves. Original had ALL emojis in a flat Stack, meaning
-//    any position change triggered repainting of the entire Stack layer,
-//    including unrelated emojis and HUD elements above/below.
+// FIX (over-layering): RepaintBoundary was applied to EVERY individual
+// emoji and EVERY score popup — with up to 15 emojis + several popups on
+// screen at once, that's ~20 simultaneous GPU compositing layers for a
+// simple 2D scene. Each RepaintBoundary is a real cost (a separate offscreen
+// layer Android's renderer must allocate and composite), and since every
+// falling emoji repaints constantly anyway (it's moving every frame), the
+// isolation benefit per-emoji is much smaller than the layer-management
+// overhead of maintaining ~20 of them concurrently. RepaintBoundary is now
+// applied ONCE around the whole emoji layer and ONCE around the effects
+// layer (see game_screen.dart's _EmojiLayer / _EffectLayer) instead of
+// once per widget — same isolation from the static HUD, far fewer layers.
 //
-// 2. Target BoxDecoration computed once — original recalculated
+// OTHER FIXES (unchanged from previous revision):
+// 1. Target BoxDecoration computed once — original recalculated
 //    BorderRadius.circular(size/2) and BoxShadow with withOpacity() on every
-//    single build call. Both produce heap objects. Extracted to a static
-//    helper that returns a const-equivalent structure per unique size.
-//    In practice most emojis share the same size per level, so this path
-//    hits a cached value.
-//
-// 3. TextStyle allocation eliminated — original did TextStyle(fontSize: ...)
-//    inline every build call. Now uses a module-level _baseStyle with
+//    single build call. Cached per unique size instead.
+// 2. TextStyle allocation eliminated — module-level _baseStyle with
 //    copyWith only for the fontSize, which is the only changing field.
-//
-// 4. ScorePopup key stability — original used d.hashCode as key (can
-//    collide; also changes between frames). Now caller passes a stable
-//    unique int id. Avoids unnecessary widget remounting.
+// 3. ScorePopup key stability — caller passes a stable unique key rather
+//    than relying on hashCode.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/emoji_item.dart';
 
-// FIX 3: one allocation shared across all builds; copyWith for fontSize only
+// One allocation shared across all builds; copyWith for fontSize only
 const TextStyle _baseEmojiStyle = TextStyle(height: 1.0);
 
 class FallingEmojiWidget extends StatelessWidget {
@@ -43,16 +53,10 @@ class FallingEmojiWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX 1: RepaintBoundary isolates each emoji's repaint.
-    // Without this, moving one emoji triggers a full Stack repaint including
-    // all siblings, the HUD, and overlay widgets.
-    return RepaintBoundary(
-      child: Positioned(
-        left: emoji.x - emoji.size / 2,
-        top:  emoji.y - emoji.size / 2,
-        child: _buildEmoji(),
-      ),
-    );
+    // No Positioned/RepaintBoundary here — the caller (_EmojiLayer) already
+    // wraps this widget in the ONE Positioned that actually matters, and
+    // RepaintBoundary is applied once at the layer level instead of here.
+    return _buildEmoji();
   }
 
   Widget _buildEmoji() {
@@ -154,19 +158,21 @@ class ScorePopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RepaintBoundary removed here — consolidated to one layer around the
+    // whole effects region in _EffectLayer (game_screen.dart) instead of
+    // one per popup. Positioned is correct here since ScorePopup is placed
+    // directly as a Stack child with no outer Positioned wrapping it.
     return Positioned(
       left: x - 40,
       top:  y - 50,
-      child: RepaintBoundary(   // FIX 1: isolate popup repaint
-        child: IgnorePointer(
-          child: Text(
-            isCombo ? '+$points 🔥' : '+$points',
-            style: isCombo ? _comboPopupStyle : _normalPopupStyle,
-          )
-              .animate()
-              .moveY(begin: 0, end: -60, duration: 800.ms, curve: Curves.easeOut)
-              .fadeOut(begin: 1.0, delay: 300.ms, duration: 500.ms),
-        ),
+      child: IgnorePointer(
+        child: Text(
+          isCombo ? '+$points 🔥' : '+$points',
+          style: isCombo ? _comboPopupStyle : _normalPopupStyle,
+        )
+            .animate()
+            .moveY(begin: 0, end: -60, duration: 800.ms, curve: Curves.easeOut)
+            .fadeOut(begin: 1.0, delay: 300.ms, duration: 500.ms),
       ),
     );
   }

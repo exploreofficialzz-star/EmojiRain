@@ -486,20 +486,29 @@ class _EmojiLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        for (final e in emojis)
-          Positioned(
-            key:  ValueKey(e.id),
-            left: (e.x - e.size / 2).clamp(0.0, screenSize.width  - e.size),
-            top:  (e.y - e.size / 2).clamp(-e.size, screenSize.height),
-            child: FallingEmojiWidget(
-              emoji: e,
-              onTap: () => onTap(e),  // FIX 6: stable closure per item
+    // ONE RepaintBoundary for the whole falling-emoji region, not one per
+    // emoji. With up to 15 emojis on screen, per-emoji RepaintBoundaries
+    // meant up to 15 simultaneous GPU compositing layers just for this
+    // region — real overhead for widgets that repaint every single frame
+    // anyway (little isolation benefit to begin with). This still isolates
+    // the whole animated region from the static HUD/background around it,
+    // with a single layer instead of many.
+    return RepaintBoundary(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (final e in emojis)
+            Positioned(
+              key:  ValueKey(e.id),
+              left: (e.x - e.size / 2).clamp(0.0, screenSize.width  - e.size),
+              top:  (e.y - e.size / 2).clamp(-e.size, screenSize.height),
+              child: FallingEmojiWidget(
+                emoji: e,
+                onTap: () => onTap(e),  // FIX 6: stable closure per item
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -519,36 +528,42 @@ class _EffectLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ONE RepaintBoundary per sub-layer (2 total) instead of one per popup
+    // / tap effect — same reasoning as _EmojiLayer above.
     return Stack(
       children: [
         // Score popups
-        ValueListenableBuilder(
-          valueListenable: scoreEvents,
-          builder: (_, events, __) => Stack(
-            children: [
-              for (int i = 0; i < events.length; i++)
-                ScorePopup(
-                  key:     ValueKey('se_$i'),
-                  points:  events[i].event.points,
-                  x:       events[i].event.x,
-                  y:       events[i].event.y,
-                  isCombo: events[i].event.isCombo,
-                ),
-            ],
+        RepaintBoundary(
+          child: ValueListenableBuilder(
+            valueListenable: scoreEvents,
+            builder: (_, events, __) => Stack(
+              children: [
+                for (int i = 0; i < events.length; i++)
+                  ScorePopup(
+                    key:     ValueKey('se_$i'),
+                    points:  events[i].event.points,
+                    x:       events[i].event.x,
+                    y:       events[i].event.y,
+                    isCombo: events[i].event.isCombo,
+                  ),
+              ],
+            ),
           ),
         ),
         // Tap effects
-        ValueListenableBuilder(
-          valueListenable: tapEffects,
-          builder: (_, effects, __) => Stack(
-            children: [
-              for (final effect in effects)
-                TapEffectWidget(
-                  key:        ValueKey(effect.id),
-                  effect:     effect,
-                  onComplete: () => onRemoveTap(effect.id),
-                ),
-            ],
+        RepaintBoundary(
+          child: ValueListenableBuilder(
+            valueListenable: tapEffects,
+            builder: (_, effects, __) => Stack(
+              children: [
+                for (final effect in effects)
+                  TapEffectWidget(
+                    key:        ValueKey(effect.id),
+                    effect:     effect,
+                    onComplete: () => onRemoveTap(effect.id),
+                  ),
+              ],
+            ),
           ),
         ),
       ],
