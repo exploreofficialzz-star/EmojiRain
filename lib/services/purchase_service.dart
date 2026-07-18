@@ -144,7 +144,7 @@ class PurchaseService extends ChangeNotifier {
     await _applyDuration(duration);
   }
 
-  // ── Core: apply duration to the remove-ads timer ──────────────────────────
+  // ── Core: extend or set the remove-ads timer ─────────────────────────────
   Future<void> _applyDuration(Duration duration) async {
     final now  = DateTime.now();
     final base = (_adsRemoved && _expiry != null && _expiry!.isAfter(now))

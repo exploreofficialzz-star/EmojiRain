@@ -1,3 +1,40 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// lib/screens/home_screen.dart — REVISED
+//
+// CHANGES:
+//
+// 1. RESPONSIVE SCALING (the "fit all phone screens" fix). The layout was
+//    already wrapped in a SingleChildScrollView, so it never technically
+//    overflowed/crashed — but on shorter phones (older/budget Android
+//    devices in particular), the ~236px of fixed gap spacing plus fixed
+//    element sizes (120px logo, 66px button, 72px emoji showcase) pushed
+//    the PLAY NOW button — the single most important element on this
+//    screen — well past one screenful, requiring real scrolling to reach
+//    it. A LayoutBuilder now computes a `scale` factor from the actual
+//    available height vs a comfortable reference height (720dp — roughly
+//    what a mid-size modern phone offers after status bar/nav bar/banner
+//    ad). Phones at or above that reference get the exact original,
+//    spacious layout unchanged. Shorter phones get proportionally
+//    compressed spacing and element sizes, with floors so nothing shrinks
+//    below a legible/tappable minimum. The scroll view stays in place
+//    regardless, as a safety net for extreme cases (very short screens,
+//    large system font-size accessibility settings, split-screen, etc.).
+//
+// 2. HORIZONTAL OVERFLOW SAFETY in the fake-stats badges. Their text is
+//    dynamically generated (varies in length depending on current time —
+//    see _dynamicGamesPlayed / _dynamicSurvivalStat) and was rendered in
+//    an unconstrained Row with no wrap/ellipsis fallback. On a narrow
+//    device, a longer generated string could overflow the row. Wrapped in
+//    Flexible + ellipsis so it gracefully truncates instead.
+//
+// 3. BACKGROUND BUTTON — the custom-wallpaper feature previously only had
+//    an entry point inside the in-game pause menu, with no way to set a
+//    background before starting a game at all. Added alongside the sound
+//    toggle as a matched pair of secondary utility controls, using the
+//    shared showBackgroundPickerSheet() (see widgets/background_picker_
+//    sheet.dart) — same sheet the pause menu uses, not a duplicate.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -11,9 +48,15 @@ import '../services/coin_service.dart';
 import '../services/notification_service.dart';
 import '../services/purchase_service.dart';
 import '../services/streak_service.dart';
+import '../widgets/background_picker_sheet.dart';
 import '../widgets/daily_reward_modal.dart';
 import 'game_screen.dart';
 import 'leaderboard_screen.dart';
+
+// Reference viewport height for the responsive scale factor. Phones with
+// at least this much available height get the original, unscaled layout.
+const double _kReferenceHeight = 720.0;
+const double _kMinScale        = 0.62;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -100,32 +143,50 @@ class _HomeScreenState extends State<HomeScreen>
             child: Container(
               decoration: const BoxDecoration(gradient: AppColors.bgGradient),
               child: SafeArea(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 12),
-                      // ── Top bar: Coin balance + Streak ───────────────
-                      _buildTopBar(context),
-                      const SizedBox(height: 20),
-                      _buildLogo(),
-                      const SizedBox(height: 28),
-                      _buildEmojiShowcase(),
-                      const SizedBox(height: 24),
-                      _buildHighScore(game),
-                      const SizedBox(height: 28),
-                      // ── Leaderboard teaser banner ─────────────────────
-                      _buildLeaderboardBanner(context),
-                      const SizedBox(height: 28),
-                      _buildStartButton(context),
-                      const SizedBox(height: 20),
-                      _buildSoundToggle(),
-                      const SizedBox(height: 16),
-                      _buildFakeStats(),
-                      const SizedBox(height: 36),
-                      _buildByChAs(),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final scale = (constraints.maxHeight / _kReferenceHeight)
+                        .clamp(_kMinScale, 1.0);
+
+                    return SingleChildScrollView(
+                      child: ConstrainedBox(
+                        // On tall screens (content shorter than the
+                        // viewport), minHeight + mainAxisAlignment.center
+                        // below together center everything vertically
+                        // instead of leaving a dead gap at the bottom. On
+                        // short screens, min (not max/tight) means content
+                        // simply scrolls as needed rather than being forced
+                        // to compress below what `scale` already allows.
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(height: 12 * scale),
+                            _buildTopBar(context),
+                            SizedBox(height: 20 * scale),
+                            _buildLogo(scale),
+                            SizedBox(height: 28 * scale),
+                            _buildEmojiShowcase(scale),
+                            SizedBox(height: 24 * scale),
+                            _buildHighScore(game),
+                            SizedBox(height: 24 * scale),
+                            _buildLeaderboardBanner(context),
+                            SizedBox(height: 24 * scale),
+                            _buildStartButton(context, scale),
+                            SizedBox(height: 18 * scale),
+                            _buildUtilityRow(context),
+                            SizedBox(height: 16 * scale),
+                            _buildFakeStats(),
+                            SizedBox(height: 24 * scale),
+                            _buildByChAs(),
+                            SizedBox(height: 20 * scale),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -305,11 +366,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Logo ───────────────────────────────────────────────────────────────────
-  Widget _buildLogo() {
+  Widget _buildLogo(double scale) {
+    final logoSize  = (120 * scale).clamp(84.0, 120.0);
+    final titleSize = (46  * scale).clamp(32.0, 46.0);
+
     return Column(
       children: [
         Container(
-          width: 120, height: 120,
+          width: logoSize, height: logoSize,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
@@ -339,14 +403,14 @@ class _HomeScreenState extends State<HomeScreen>
               curve: Curves.easeInOut,
             ),
 
-        const SizedBox(height: 20),
+        SizedBox(height: 20 * scale),
 
         ShaderMask(
           shaderCallback: (b) => AppColors.goldGradient.createShader(b),
-          child: const Text(
+          child: Text(
             'EMOJI RAIN',
             style: TextStyle(
-              fontSize: 46, fontWeight: FontWeight.w900,
+              fontSize: titleSize, fontWeight: FontWeight.w900,
               color: Colors.white, letterSpacing: 2,
             ),
           ),
@@ -355,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen>
             .fadeIn(duration: 600.ms, delay: 200.ms)
             .slideY(begin: 0.3, end: 0, duration: 500.ms),
 
-        const SizedBox(height: 6),
+        SizedBox(height: 6 * scale),
 
         Text(
           'FOCUS  OR  FAIL',
@@ -369,10 +433,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Emoji Showcase ─────────────────────────────────────────────────────────
-  Widget _buildEmojiShowcase() {
+  Widget _buildEmojiShowcase(double scale) {
     const emojis = ['❤️', '😊', '🤩', '😱', '💀', '🔥', '😎', '🥳', '💎', '👻'];
+    final rowHeight = (72 * scale).clamp(56.0, 72.0);
     return SizedBox(
-      height: 72,
+      height: rowHeight,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount:       emojis.length,
@@ -428,7 +493,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ── Start Button ───────────────────────────────────────────────────────────
-  Widget _buildStartButton(BuildContext context) {
+  Widget _buildStartButton(BuildContext context, double scale) {
+    final btnHeight = (66 * scale).clamp(54.0, 66.0);
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (_, child) => Transform.scale(
@@ -439,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen>
         onTap: () => _startGame(context),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 36),
-          height: 66,
+          height: btnHeight,
           decoration: BoxDecoration(
             gradient: AppColors.primaryBtnGradient,
             borderRadius: BorderRadius.circular(22),
@@ -475,6 +541,47 @@ class _HomeScreenState extends State<HomeScreen>
         );
   }
 
+  // ── Utility Row: Sound + Background ────────────────────────────────────────
+  // Matched pair of secondary controls. Background was previously only
+  // reachable from the in-game pause menu — this gives players a way to
+  // set it before ever starting a game, using the exact same shared sheet.
+  Widget _buildUtilityRow(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildSoundToggle(),
+        const SizedBox(width: 20),
+        Container(
+          width: 1, height: 16,
+          color: Colors.white.withOpacity(0.15),
+        ),
+        const SizedBox(width: 20),
+        GestureDetector(
+          onTap: () => showBackgroundPickerSheet(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wallpaper_rounded,
+                color: AppColors.accent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Background',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).animate().fadeIn(delay: 700.ms, duration: 500.ms);
+  }
+
   // ── Sound Toggle ───────────────────────────────────────────────────────────
   Widget _buildSoundToggle() {
     return StatefulBuilder(
@@ -491,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen>
               Icon(
                 on ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                 color: on ? AppColors.accent : AppColors.textSecondary,
-                size: 20,
+                size: 18,
               ),
               const SizedBox(width: 8),
               Text(
@@ -511,14 +618,17 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ── Fake Stats ─────────────────────────────────────────────────────────────
   Widget _buildFakeStats() {
-    return Column(
-      children: [
-        _statBadge('👥', '$_dynamicGamesPlayed games played today'),
-        const SizedBox(height: 8),
-        _statBadge('🏆', 'Average score: $_dynamicAvgScore points'),
-        const SizedBox(height: 8),
-        _statBadge('🔥', _dynamicSurvivalStat),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          _statBadge('👥', '$_dynamicGamesPlayed games played today'),
+          const SizedBox(height: 8),
+          _statBadge('🏆', 'Average score: $_dynamicAvgScore points'),
+          const SizedBox(height: 8),
+          _statBadge('🔥', _dynamicSurvivalStat),
+        ],
+      ),
     ).animate().fadeIn(delay: 800.ms, duration: 600.ms);
   }
 
@@ -535,7 +645,18 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           Text(emoji, style: const TextStyle(fontSize: 14)),
           const SizedBox(width: 8),
-          Text(text, style: AppTextStyles.bodyMedium),
+          // FIX: dynamically-generated text (length varies with time of
+          // day) could overflow the row on narrow screens with no
+          // wrap/ellipsis fallback. Flexible lets it shrink gracefully
+          // instead of forcing a hard overflow.
+          Flexible(
+            child: Text(
+              text,
+              style:     AppTextStyles.bodyMedium,
+              overflow:  TextOverflow.ellipsis,
+              maxLines:  1,
+            ),
+          ),
         ],
       ),
     );
