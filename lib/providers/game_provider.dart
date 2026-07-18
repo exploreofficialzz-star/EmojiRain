@@ -32,6 +32,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../constants/emoji_data.dart';
@@ -139,24 +140,26 @@ class GameProvider extends ChangeNotifier {
   int    _idCounter         = 0;   // FIX 6: monotonic vs DateTime syscall
   final  Random _rng        = Random();
 
-  final Stopwatch _stopwatch = Stopwatch();
-  Timer? _gameTimer;
+  // ── Game clock — Ticker, not Timer ────────────────────────────────────────
+  //
+  // WHY A TICKER: Timer.periodic(16ms) runs on Dart's event loop, which is
+  // NOT the same clock as Flutter's actual rendering pipeline (VSync).
+  // Even with correct delta-time math, a Timer can fire slightly out of
+  // phase with the device's real frame cadence — and when that happens,
+  // Flutter can coalesce two out-of-phase updates into a single rendered
+  // frame, producing the exact same "small step, big step" stutter as the
+  // earlier notify-throttle bug, just from a different cause. This is why
+  // no serious Flutter game loop uses Timer for continuous motion — Ticker
+  // (the same primitive AnimationController itself is built on) fires
+  // exactly once per actual rendered frame, phase-locked to VSync, with no
+  // possibility of drifting out of sync with what's on screen. This is the
+  // single change most responsible for whether falling motion reads as
+  // "smooth" vs "stuttery" — everything else was already correct.
+  Ticker?  _ticker;
+  Duration _lastTick = Duration.zero;
+
   Timer? _spawnTimer;
   Timer? _levelTimer;
-
-  // NOTE: no separate notify-throttle here. _update() is invoked from a
-  // Timer.periodic(16ms) (see _startLoop below) — already effectively
-  // capped at ~60Hz by construction. A previous revision added a SEPARATE
-  // wall-clock 16ms throttle gate on top of that, which caused visible
-  // stutter: Dart's Timer.periodic doesn't fire at exactly 16.0ms every
-  // time (real jitter — sometimes 14ms, sometimes 19ms apart depending on
-  // event-loop load). Whenever two ticks landed less than 16ms apart, the
-  // throttle would SILENTLY SKIP that tick's notifyListeners() call — but
-  // the emoji's position had already moved that tick regardless. The next
-  // tick would then notify with TWO ticks' worth of accumulated movement
-  // at once, producing an uneven small-step/big-jump/small-step motion
-  // pattern. Removed — notifyListeners() now fires directly every physics
-  // tick, matching the driving timer's own natural ~60Hz rate exactly.
 
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
@@ -367,14 +370,9 @@ class GameProvider extends ChangeNotifier {
   // ── Game Loop ─────────────────────────────────────────────────────────────
   void _startLoop() {
     _stopTimers();
-    _stopwatch..reset()..start();
 
-    // FIX 1: single physics timer at 16ms; all notify calls gated to 60 fps
-    _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      final ms = _stopwatch.elapsedMilliseconds;
-      _stopwatch.reset();
-      _update((ms / 1000.0).clamp(0.005, 0.05));
-    });
+    _lastTick = Duration.zero;
+    _ticker   = Ticker(_onTick)..start();
 
     _spawnTimer = Timer.periodic(
         const Duration(milliseconds: 40), (_) => _maybeSpawn());
@@ -391,13 +389,26 @@ class GameProvider extends ChangeNotifier {
     });
   }
 
+  // Fires once per actual rendered frame (VSync-locked) — see the Ticker
+  // field comment above for why this matters. `elapsed` is CUMULATIVE
+  // since the ticker started, so the per-frame delta is computed by
+  // subtracting the previous call's elapsed value.
+  void _onTick(Duration elapsed) {
+    final delta = elapsed - _lastTick;
+    _lastTick   = elapsed;
+
+    final dtSeconds = (delta.inMicroseconds / 1000000.0).clamp(0.005, 0.05);
+    _update(dtSeconds);
+  }
+
   void _stopTimers() {
-    _stopwatch.stop();
-    _gameTimer?.cancel();
+    _ticker?.stop();
+    _ticker?.dispose();
+    _ticker = null;
     _spawnTimer?.cancel();
     _levelTimer?.cancel();
     _slowMoTimer?.cancel();
-    _gameTimer = _spawnTimer = _levelTimer = null;
+    _spawnTimer = _levelTimer = null;
   }
 
   void _update(double dt) {
