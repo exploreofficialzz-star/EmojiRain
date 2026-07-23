@@ -43,38 +43,29 @@ flutter run
 
 ---
 
-## 💰 AdMob Setup (REQUIRED before publishing)
+## 💰 AdMob Setup
 
-The project ships with **Google's official test Ad IDs**. You MUST replace them before going live.
+**Android is already configured with real production IDs** — the App ID in
+`AndroidManifest.xml` and the ad unit IDs in `AdIds` (`lib/constants/app_constants.dart`)
+both use the live `ca-app-pub-2492078126313994` account. Nothing to do there.
 
-### Step 1 — Get your AdMob App IDs
-1. Go to [admob.google.com](https://admob.google.com)
-2. Create an app for Android and one for iOS
-3. Note your **App IDs** (format: `ca-app-pub-XXXXXXXXXX~XXXXXXXXXX`)
+**iOS still needs to be set up.** `ios/Runner/Info.plist` currently has Google's
+public *sample* App ID (`ca-app-pub-3940256099942544~1458002511`) — this is a
+placeholder, not a real one, and is flagged with a `⚠️` comment in the file itself.
+Ads will not serve correctly on iOS, and Apple review may flag it, until this is replaced.
 
-### Step 2 — Replace App IDs
+### To finish iOS setup
 
-**Android** — `android/app/src/main/AndroidManifest.xml`:
-```xml
-<meta-data
-    android:name="com.google.android.gms.ads.APPLICATION_ID"
-    android:value="ca-app-pub-YOUR_ANDROID_APP_ID"/>
-```
-
-**iOS** — `ios/Runner/Info.plist`:
-```xml
-<key>GADApplicationIdentifier</key>
-<string>ca-app-pub-YOUR_IOS_APP_ID</string>
-```
-
-### Step 3 — Replace Ad Unit IDs
-
-In `lib/constants/app_constants.dart`, replace all values inside `AdIds`:
-```dart
-static String get banner      => 'ca-app-pub-XXXX/YYYY';
-static String get interstitial => 'ca-app-pub-XXXX/YYYY';
-static String get rewarded     => 'ca-app-pub-XXXX/YYYY';
-```
+1. In [admob.google.com](https://admob.google.com), create an **iOS app** (separate
+   from the existing Android app) under the same or a new AdMob account.
+2. Replace the App ID in `ios/Runner/Info.plist`:
+   ```xml
+   <key>GADApplicationIdentifier</key>
+   <string>ca-app-pub-YOUR_REAL_IOS_APP_ID</string>
+   ```
+3. Create iOS-specific ad units (banner, interstitial, rewarded) — **don't reuse the
+   Android ad unit IDs**, AdMob issues separate ones per platform app. Then update the
+   iOS branch of each getter in `AdIds` (`lib/constants/app_constants.dart`) accordingly.
 
 ---
 

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_constants.dart';
 import '../constants/emoji_data.dart';
 import '../models/emoji_item.dart';
 import '../services/audio_service.dart';
 import '../services/coin_service.dart';
-import '../services/leaderboard_service.dart';
 
 enum GameState { idle, playing, paused, gameOver }
 
@@ -57,16 +57,34 @@ class GameProvider extends ChangeNotifier {
   double _currentSpeed      = GameConstants.speedBase;
   final  Random _rng        = Random();
 
-  // Original game loop machinery — Stopwatch + Timer.periodic exactly as
-  // shipped. Do NOT replace with Ticker: the Timer-driven loop produces
-  // the exact motion feel the game was designed and tested around.
-  final Stopwatch _stopwatch = Stopwatch();
-  Timer? _gameTimer;
-  Timer? _spawnTimer;
-  Timer? _levelTimer;
+  // Game loop clock — driven by a Ticker (a per-frame, vsync-synced
+  // callback), not Timer.periodic. Timer.periodic runs on the Dart
+  // event-loop timer wheel, which has no fixed relationship to the
+  // engine's actual frame schedule: its callbacks can land early, late,
+  // or in bursts relative to what's actually being rendered. In practice
+  // that shows up as emojis appearing to hitch and jump in small
+  // increments ("stepping") instead of gliding — especially on 90/120Hz
+  // screens, where a fixed 16ms period is out of phase with the true
+  // per-frame interval. Ticker instead hooks directly into
+  // SchedulerBinding's per-frame callback (the same mechanism
+  // AnimationController itself uses), so _onTick fires exactly once per
+  // rendered frame with an accurate elapsed-time delta — the correct way
+  // to drive continuous motion in Flutter.
+  Ticker?  _ticker;
+  Duration _lastTick = Duration.zero;
+  Timer?   _spawnTimer;
+  Timer?   _levelTimer;
 
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
+  // NOTE: must allocate a NEW List.unmodifiable(...) on every call, not a
+  // cached/stable reference. EmojiItem fields (x/y/etc.) are mutated in
+  // place each tick rather than the list being rebuilt, so GameScreen's
+  // Selector<GameProvider, List<EmojiItem>> relies on getting a
+  // different object identity each notify to know it must rebuild and
+  // repaint the new positions. An "optimized" cached/identical reference
+  // here would make the Selector stop rebuilding and freeze the falling
+  // animation in place.
   List<EmojiItem>  get emojis                 => List.unmodifiable(_emojis);
   List<ScoreEvent> get scoreEvents            => List.unmodifiable(_scoreEvents);
   int              get score                  => _score;
@@ -247,16 +265,16 @@ class GameProvider extends ChangeNotifier {
     return true;
   }
 
-  // ── Game Loop — original, unchanged ──────────────────────────────────────
+  // ── Game Loop — physics on a Ticker (vsync), spawn/level on Timer ─────────
+  // Spawning a new emoji and ticking the 1-second level countdown are
+  // discrete periodic events, not continuous motion — Timer.periodic
+  // remains the right tool for those. Only the per-frame position update
+  // needed to move from Timer to Ticker.
   void _startLoop() {
     _stopTimers();
-    _stopwatch..reset()..start();
 
-    _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      final ms = _stopwatch.elapsedMilliseconds;
-      _stopwatch.reset();
-      _update((ms / 1000.0).clamp(0.005, 0.05));
-    });
+    _lastTick = Duration.zero;
+    _ticker   = Ticker(_onTick, debugLabel: 'GameProvider physics')..start();
 
     _spawnTimer = Timer.periodic(
         const Duration(milliseconds: 40), (_) => _maybeSpawn());
@@ -273,16 +291,32 @@ class GameProvider extends ChangeNotifier {
     });
   }
 
+  // Fires once per rendered frame, timestamped by the engine itself, so
+  // dt is always the real elapsed time since the previous frame — motion
+  // stays smooth and correct regardless of the device's actual refresh rate.
+  void _onTick(Duration elapsed) {
+    final dt = (elapsed - _lastTick).inMicroseconds / 1000000.0;
+    _lastTick = elapsed;
+    // Cap dt so a stall (a slow frame, a brief hiccup) can't make physics
+    // leap forward in one huge jump. No floor is needed — a genuine
+    // per-frame delta from the engine is never negative or artificially
+    // tiny the way a jittery wall-clock timer's could be.
+    _update(dt.clamp(0.0, 0.05));
+  }
+
   void _stopTimers() {
-    _stopwatch.stop();
-    _gameTimer?.cancel();
+    _ticker?.stop();
+    _ticker?.dispose();
+    _ticker = null;
     _spawnTimer?.cancel();
     _levelTimer?.cancel();
     _slowMoTimer?.cancel();
-    _gameTimer = _spawnTimer = _levelTimer = null;
+    _spawnTimer = _levelTimer = null;
   }
 
-  // ── _update — original, unchanged ────────────────────────────────────────
+  // ── _update — per-frame physics step, unchanged other than its caller ─────
+  // (formula itself is dt-scaled and was already correct; only the timing
+  // source that supplies dt changed — see _onTick above)
   void _update(double dt) {
     if (_state != GameState.playing) return;
 
@@ -460,8 +494,6 @@ class GameProvider extends ChangeNotifier {
     if (_sessionCoins > 0) {
       CoinService.instance.addCoins(_sessionCoins);
     }
-
-    LeaderboardService.instance.submitScore(_score);
 
     _showInterstitial = true;
     _showRewarded     = true;

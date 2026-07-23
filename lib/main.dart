@@ -8,10 +8,8 @@ import 'screens/home_screen.dart';
 import 'services/ad_service.dart';
 import 'services/audio_service.dart';
 import 'services/coin_service.dart';
-import 'services/leaderboard_service.dart';
 import 'services/network_service.dart';
 import 'services/notification_service.dart';
-import 'services/profile_service.dart';
 import 'services/purchase_service.dart';
 import 'services/streak_service.dart';
 import 'services/wallpaper_service.dart';
@@ -62,13 +60,7 @@ void main() async {
   // ── 9. Daily streak ──────────────────────────────────────────────────────
   await StreakService.instance.init();
 
-  // ── 10. Leaderboard engine ───────────────────────────────────────────────
-  await LeaderboardService.instance.init();
-
-  // ── 11. Player profile ───────────────────────────────────────────────────
-  await ProfileService.instance.init();
-
-  // ── 12. Custom game wallpaper ────────────────────────────────────────────
+  // ── 10. Custom game wallpaper ────────────────────────────────────────────
   await WallpaperService.instance.init();
 
   runApp(const EmojiRainApp());
@@ -96,8 +88,6 @@ class EmojiRainApp extends StatelessWidget {
         // ── New feature services ──────────────────────────────────────────
         ChangeNotifierProvider.value(value: CoinService.instance),
         ChangeNotifierProvider.value(value: StreakService.instance),
-        ChangeNotifierProvider.value(value: LeaderboardService.instance),
-        ChangeNotifierProvider.value(value: ProfileService.instance),
         ChangeNotifierProvider.value(value: WallpaperService.instance),
       ],
       child: MaterialApp(

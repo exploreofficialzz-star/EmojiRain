@@ -11,7 +11,6 @@ import '../services/purchase_service.dart';
 import '../widgets/network_banner.dart';
 import '../widgets/remove_ads_sheet.dart';
 import 'game_screen.dart';
-import 'leaderboard_screen.dart';
 
 class GameOverScreen extends StatefulWidget {
   const GameOverScreen({super.key});
@@ -75,15 +74,6 @@ class _GameOverScreenState extends State<GameOverScreen> {
   void _goHome(BuildContext context) {
     context.read<GameProvider>().goHome();
     Navigator.of(context).popUntil((r) => r.isFirst);
-  }
-
-  void _openLeaderboard(BuildContext context) {
-    Navigator.of(context).push(PageRouteBuilder(
-      pageBuilder:        (_, anim, __) => const LeaderboardScreen(),
-      transitionsBuilder: (_, anim, __, child) =>
-          FadeTransition(opacity: anim, child: child),
-      transitionDuration: const Duration(milliseconds: 350),
-    ));
   }
 
   Future<void> _shareScore(GameProvider game) async {
@@ -190,10 +180,6 @@ class _GameOverScreenState extends State<GameOverScreen> {
                               const SizedBox(height: 12),
                             ],
 
-                            // Feature 6: Leaderboard CTA
-                            _buildLeaderboardCta(context, game),
-                            const SizedBox(height: 12),
-
                             // Feature 5: Share score
                             _buildShareButton(game),
                             const SizedBox(height: 12),
@@ -286,52 +272,6 @@ class _GameOverScreenState extends State<GameOverScreen> {
           duration: 350.ms,
           curve: Curves.elasticOut,
         );
-  }
-
-  // ── Feature 6: Leaderboard CTA ────────────────────────────────────────────
-  Widget _buildLeaderboardCta(BuildContext context, GameProvider game) {
-    return GestureDetector(
-      onTap: () => _openLeaderboard(context),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceCard,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1.2),
-        ),
-        child: Row(
-          children: [
-            const Text('🏆', style: TextStyle(fontSize: 22)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'VIEW LEADERBOARD',
-                    style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w900,
-                      color: AppColors.primary, letterSpacing: 1,
-                    ),
-                  ),
-                  Text(
-                    'Your best today: ${game.score} pts',
-                    style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.primary, size: 20,
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(delay: 750.ms);
   }
 
   // ── Feature 5: Share Score ─────────────────────────────────────────────────

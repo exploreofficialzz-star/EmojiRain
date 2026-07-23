@@ -51,7 +51,6 @@ import '../services/streak_service.dart';
 import '../widgets/background_picker_sheet.dart';
 import '../widgets/daily_reward_modal.dart';
 import 'game_screen.dart';
-import 'leaderboard_screen.dart';
 
 // Reference viewport height for the responsive scale factor. Phones with
 // at least this much available height get the original, unscaled layout.
@@ -119,16 +118,6 @@ class _HomeScreenState extends State<HomeScreen>
     ));
   }
 
-  void _openLeaderboard(BuildContext context) {
-    AudioService.instance.play(SoundEffect.tap);
-    Navigator.of(context).push(PageRouteBuilder(
-      pageBuilder:        (_, anim, __) => const LeaderboardScreen(),
-      transitionsBuilder: (_, anim, __, child) =>
-          FadeTransition(opacity: anim, child: child),
-      transitionDuration: const Duration(milliseconds: 350),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     final game     = context.watch<GameProvider>();
@@ -171,8 +160,6 @@ class _HomeScreenState extends State<HomeScreen>
                             _buildEmojiShowcase(scale),
                             SizedBox(height: 24 * scale),
                             _buildHighScore(game),
-                            SizedBox(height: 24 * scale),
-                            _buildLeaderboardBanner(context),
                             SizedBox(height: 24 * scale),
                             _buildStartButton(context, scale),
                             SizedBox(height: 18 * scale),
@@ -303,65 +290,6 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ).animate().fadeIn(duration: 400.ms),
-    );
-  }
-
-  // ── Leaderboard Teaser Banner ──────────────────────────────────────────────
-  Widget _buildLeaderboardBanner(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _openLeaderboard(context),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF1A1A40),
-              AppColors.primary.withOpacity(0.12),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: AppColors.primary.withOpacity(0.4),
-            width: 1.2,
-          ),
-        ),
-        child: Row(
-          children: [
-            const Text('🏆', style: TextStyle(fontSize: 28)),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'LEADERBOARD',
-                    style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w900,
-                      color: AppColors.primary, letterSpacing: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Compete daily · Prizes up to \$50',
-                    style: TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.primary,
-              size: 22,
-            ),
-          ],
-        ),
-      )
-          .animate()
-          .fadeIn(delay: 550.ms, duration: 500.ms)
-          .shimmer(delay: 2500.ms, duration: 1800.ms, color: AppColors.primaryGlow),
     );
   }
 
