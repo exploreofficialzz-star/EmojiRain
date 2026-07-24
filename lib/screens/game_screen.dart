@@ -73,12 +73,20 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
+class _GameScreenState extends State<GameScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   // ── Effect state — LOCAL ValueNotifier so only effect layer rebuilds ──────
   final ValueNotifier<List<_ScoreEventDisplay>> _scoreEvents =
       ValueNotifier([]);
   final ValueNotifier<List<TapEffect>> _tapEffects =
       ValueNotifier([]);
+
+  // ── Render loop ───────────────────────────────────────────────────────────
+  // Drives the emoji layer rebuild on every vsync frame via AnimatedBuilder.
+  // This decouples visual smoothness from ChangeNotifier timing entirely —
+  // positions are always current by the time the emoji layer reads them
+  // because the build phase runs AFTER all transient Ticker callbacks.
+  late AnimationController _renderLoop;
 
   int  _previousLevel    = 1;
   bool _showLevelUp      = false;
@@ -89,6 +97,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    // vsync: this is valid here because SingleTickerProviderStateMixin
+    // is available from the moment the State is created (before the
+    // first build). Duration is arbitrary — we only care that the
+    // controller ticks every frame, not about its 0→1 value.
+    _renderLoop = AnimationController(
+      vsync:    this,
+      duration: const Duration(seconds: 1),
+    );
     WidgetsBinding.instance.addObserver(this);
     _loadBanner();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -99,6 +115,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           screenHeight: size.height,
         );
       }
+      // Start the render loop if the game is playing. For the normal
+      // (non-continue) path, startGame() just set state to playing.
+      // For isContinue, the game may already be paused — _onGameStateChange
+      // will start the loop the moment game.resumeGame() is called.
+      if (context.read<GameProvider>().isPlaying) _renderLoop.repeat();
+
       // FIX 3: listen for game-state changes OUTSIDE build()
       context.read<GameProvider>().addListener(_onGameStateChange);
 
@@ -119,6 +141,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   void _onGameStateChange() {
     if (!mounted) return;
     final game = context.read<GameProvider>();
+
+    // Keep the render loop in sync with the game state so we don't burn
+    // CPU/GPU rebuilding the emoji layer when the game isn't running.
+    if (game.isPlaying) {
+      if (!_renderLoop.isAnimating) _renderLoop.repeat();
+    } else {
+      if (_renderLoop.isAnimating) _renderLoop.stop();
+    }
 
     // Score events
     if (game.scoreEvents.isNotEmpty) {
@@ -212,6 +242,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _renderLoop.dispose();
     WidgetsBinding.instance.removeObserver(this);
     AdService.instance.disposeBanner();
     // FIX 3: remove the listener we added in initState
@@ -310,14 +341,22 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         : const SizedBox.shrink(),
                   ),
 
-                  // FIX 1+5: emoji layer only rebuilds when the list changes
-                  Selector<GameProvider, List<EmojiItem>>(
-                    selector: (_, g) => g.emojis,
-                    builder: (_, emojis, __) {
+                  // Emoji layer — rebuilds once per vsync frame via _renderLoop.
+                  // AnimatedBuilder reschedules a rebuild whenever the
+                  // AnimationController value changes (i.e. every frame while
+                  // the controller is running). The build phase fires AFTER all
+                  // transient Ticker callbacks — including GameProvider's
+                  // physics update — so emoji positions are always current.
+                  // This replaces the previous Selector<GameProvider,
+                  // List<EmojiItem>> which coupled smoothness to ChangeNotifier
+                  // timing and could skip frames on high-refresh-rate devices.
+                  AnimatedBuilder(
+                    animation: _renderLoop,
+                    builder: (_, __) {
                       final game = context.read<GameProvider>();
                       return _EmojiLayer(
-                        emojis:       emojis,
-                        screenSize:   MediaQuery.sizeOf(context),
+                        emojis:     game.emojis,
+                        screenSize: MediaQuery.sizeOf(context),
                         onTap: (e) {
                           _addTapEffect(e.x, e.y, e.isTarget, e.emoji);
                           game.onEmojiTapped(e);
