@@ -331,7 +331,15 @@ class GameProvider extends ChangeNotifier {
 
     _checkMisses();
     _emojis.removeWhere((e) => !e.isFalling && e.y > _screenHeight + e.size * 3);
-    notifyListeners();
+    // notifyListeners() intentionally absent here:
+    //   • Per-frame position rendering is handled by GameScreen's AnimatedBuilder,
+    //     which runs every vsync frame independently of ChangeNotifier.
+    //   • Heart loss, shield break, score events, and game-over all call
+    //     notifyListeners() from within _checkMisses() / onEmojiTapped /
+    //     _triggerGameOver — they self-report when something actually changes.
+    //   • Calling it here was firing _onGameStateChange() and re-evaluating
+    //     every Selector 60 times/second for no observable benefit, burning
+    //     CPU on checks that almost always concluded "nothing changed."
   }
 
   // ── Spawn — original, unchanged ───────────────────────────────────────────

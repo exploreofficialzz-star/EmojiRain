@@ -89,9 +89,20 @@ class _GameScreenState extends State<GameScreen>
   late AnimationController _renderLoop;
 
   int  _previousLevel    = 1;
-  bool _showLevelUp      = false;
+  // ValueNotifier instead of plain bool so updating them via .value only
+  // rebuilds the specific widget listening, NOT the entire GameScreen.
+  //
+  // The old setState() calls were causing full _GameScreenState.build()
+  // re-runs on:
+  //   • banner load  (~1-3 s into gameplay, AdMob callback)
+  //   • level change (show banner)  + 1.8 s later (hide banner) — twice per level.
+  //
+  // Each full build re-runs every Selector, every Stack layer, the
+  // AnimatedBuilder, all layout — visibly hanging the game for one or more
+  // frames each time. ValueNotifier.value = only touches the VLB subtree.
+  final ValueNotifier<bool> _showLevelUp  = ValueNotifier<bool>(false);
   bool _pausedByNetwork  = false;
-  bool _bannerLoaded     = false;
+  final ValueNotifier<bool> _bannerLoaded = ValueNotifier<bool>(false);
   bool _navigatingAway   = false;   // FIX 2: guard against double navigation
 
   @override
@@ -167,9 +178,9 @@ class _GameScreenState extends State<GameScreen>
     if (game.level != _previousLevel) {
       _previousLevel = game.level;
       if (mounted) {
-        setState(() => _showLevelUp = true);
+        _showLevelUp.value = true;
         Future.delayed(const Duration(milliseconds: 1800), () {
-          if (mounted) setState(() => _showLevelUp = false);
+          if (mounted) _showLevelUp.value = false;
         });
       }
     }
@@ -235,7 +246,9 @@ class _GameScreenState extends State<GameScreen>
     AdService.instance.loadBanner(
       size:     AdSize.banner,
       onLoaded: () {
-        if (mounted) setState(() => _bannerLoaded = true);
+        // .value = instead of setState() so only the ValueListenableBuilder
+        // wrapping the banner slot rebuilds — not the entire game screen.
+        if (mounted) _bannerLoaded.value = true;
       },
     );
   }
@@ -250,6 +263,8 @@ class _GameScreenState extends State<GameScreen>
     context.read<NetworkService>().removeListener(_onNetworkChange);
     _scoreEvents.dispose();
     _tapEffects.dispose();
+    _showLevelUp.dispose();
+    _bannerLoaded.dispose();
     super.dispose();
   }
 
@@ -277,9 +292,6 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   Widget build(BuildContext context) {
-    // FIX 1: purchase only — doesn't change during gameplay so fine at top
-    final purchase = context.watch<PurchaseService>();
-
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -395,8 +407,8 @@ class _GameScreenState extends State<GameScreen>
                         Selector<GameProvider, LevelConfig>(
                           selector: (_, g) => g.currentLevel,
                           builder:  (_, lvl, __) => RuleDisplay(
-                            level:    lvl,
-                            animateIn: _showLevelUp,
+                            level:     lvl,
+                            animateIn: _showLevelUp.value,
                           ),
                         ),
                         const Spacer(),
@@ -425,16 +437,22 @@ class _GameScreenState extends State<GameScreen>
                     ),
                   ),
 
-                  // Level-up banner — driven by local state, not Provider rebuild
-                  if (_showLevelUp)
-                    Selector<GameProvider, int>(
-                      selector: (_, g) => g.level,
-                      builder: (_, level, __) => Positioned.fill(
-                        child: IgnorePointer(
-                          child: Center(child: LevelUpBanner(level: level)),
+                  // Level-up banner — ValueListenableBuilder rebuilds ONLY this
+                  // overlay when _showLevelUp flips, not the whole game screen.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _showLevelUp,
+                    builder: (_, show, __) {
+                      if (!show) return const SizedBox.shrink();
+                      return Selector<GameProvider, int>(
+                        selector: (_, g) => g.level,
+                        builder: (_, level, __) => Positioned.fill(
+                          child: IgnorePointer(
+                            child: Center(child: LevelUpBanner(level: level)),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
+                  ),
 
                   // Heart loss flash
                   Selector<GameProvider, int>(
@@ -496,17 +514,31 @@ class _GameScreenState extends State<GameScreen>
             ),
           ),
 
-          // Banner ad — only rebuilds when adsRemoved changes
-          if (_bannerLoaded &&
-              AdService.instance.bannerAd != null &&
-              !purchase.adsRemoved)
-            Container(
-              color:     AppColors.background,
-              alignment: Alignment.center,
-              width:  AdService.instance.bannerAd!.size.width.toDouble(),
-              height: AdService.instance.bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: AdService.instance.bannerAd!),
-            ),
+          // Banner ad — ValueListenableBuilder rebuilds ONLY this slot when
+          // the ad loads, not the entire game screen (old code called setState
+          // from the AdMob callback which triggered a full build() re-run).
+          // Selector<PurchaseService> scopes the adsRemoved check here rather
+          // than subscribing the whole screen to PurchaseService notifications.
+          ValueListenableBuilder<bool>(
+            valueListenable: _bannerLoaded,
+            builder: (_, loaded, __) {
+              final ad = AdService.instance.bannerAd;
+              if (!loaded || ad == null) return const SizedBox.shrink();
+              return Selector<PurchaseService, bool>(
+                selector: (_, p) => p.adsRemoved,
+                builder:  (_, adsRemoved, __) {
+                  if (adsRemoved) return const SizedBox.shrink();
+                  return Container(
+                    color:     AppColors.background,
+                    alignment: Alignment.center,
+                    width:     ad.size.width.toDouble(),
+                    height:    ad.size.height.toDouble(),
+                    child:     AdWidget(ad: ad),
+                  );
+                },
+              );
+            },
+          ),
         ],
       ),
     );
