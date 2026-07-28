@@ -1,7 +1,7 @@
 name: emoji_rain
 description: Emoji Rain - Focus or Fail. A fast-paced emoji tapping game.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+83
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
