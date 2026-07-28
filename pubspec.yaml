@@ -1,7 +1,7 @@
 name: emoji_rain
 description: Emoji Rain - Focus or Fail. A fast-paced emoji tapping game.
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -17,7 +17,10 @@ dependencies:
   google_mobile_ads: ^5.1.0
 
   # In-App Purchases
-  in_app_purchase: ^3.2.0
+  # Updated to ^3.2.3 (latest). dependency_overrides below pins the Android
+  # implementation to 0.5.0 which ships with Google Play Billing Library 8.x,
+  # required by Google from August 31, 2026.
+  in_app_purchase: ^3.2.3
 
   # Real internet/data connection check (not just network type)
   internet_connection_checker_plus: ^2.5.1
@@ -68,6 +71,22 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1
+
+# ── Google Play Billing Library 8.x compliance (deadline: Aug 31, 2026) ──────
+#
+# in_app_purchase 3.2.3 still pins in_app_purchase_android: ^0.4.0, which
+# ships with Billing Library 7.x. Google now requires 8.0.0 or later.
+# flutter.dev published in_app_purchase_android 0.5.0 (May 27, 2026) to
+# address exactly this deadline; the main package just hasn't caught up yet.
+#
+# This override forces pub to resolve to 0.5.0 instead of the ^0.4.0 that
+# in_app_purchase declares. It is safe because:
+#   • purchase_service.dart uses ONLY the abstract InAppPurchase API —
+#     no InAppPurchaseAndroidPlatformAddition or BillingClientWrapper calls —
+#     so the Dart surface area is completely unchanged.
+#   • Remove this block once in_app_purchase officially bumps to ^0.5.0.
+dependency_overrides:
+  in_app_purchase_android: 0.5.0
 
 flutter_launcher_icons:
   android: true
