@@ -169,7 +169,17 @@ class GameProvider extends ChangeNotifier {
     _slowMoTimer           = null;
 
     _startLoop();
-    AudioService.instance.startBgm();
+    // Delay BGM by 300 ms so the audioplayers/ExoPlayer first-time
+    // initialization on the Android platform thread doesn't compete with
+    // the game's opening frames. The player.play() method-channel call
+    // triggers ExoPlayer setup (audio-focus acquisition, MediaItem
+    // preparation) which can take 100–300 ms on the platform thread the
+    // first time it runs. A 300 ms delay is imperceptible to the player
+    // but clears that work past the critical first rendered frames.
+    Future.delayed(
+      const Duration(milliseconds: 300),
+      AudioService.instance.startBgm,
+    );
     notifyListeners();
   }
 

@@ -117,7 +117,11 @@ class _GameScreenState extends State<GameScreen>
       duration: const Duration(seconds: 1),
     );
     WidgetsBinding.instance.addObserver(this);
-    _loadBanner();
+    // NOTE: _loadBanner() intentionally NOT called here.
+    // BannerAd.load() creates a native Android AdView on the platform thread.
+    // Calling it in initState() (before the first build) makes it compete with
+    // Flutter's first-frame initialization, freezing the opening animation.
+    // It is deferred below into a post-frame delayed call instead.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!widget.isContinue) {
         final size = MediaQuery.sizeOf(context);
@@ -137,14 +141,18 @@ class _GameScreenState extends State<GameScreen>
 
       // FIX (network soft-lock): network pause/resume now has its OWN
       // listener, completely independent of GameProvider's notify cycle.
-      // See _onNetworkChange() below for why this was necessary.
       context.read<NetworkService>().addListener(_onNetworkChange);
 
-      // Cover the case where the screen mounts while ALREADY offline —
-      // addListener() doesn't retroactively fire, so without this the
-      // game would start playing unaware it has no connection until the
-      // next connectivity change event.
+      // Cover the case where the screen mounts while ALREADY offline.
       _onNetworkChange();
+
+      // Defer banner loading by 1 second so it doesn't compete with the
+      // game's opening frames. BannerAd.load() does Android AdView creation
+      // on the platform thread — fine once the game is running, but harmful
+      // if it races with the first-frame render pipeline.
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) _loadBanner();
+      });
     });
   }
 
