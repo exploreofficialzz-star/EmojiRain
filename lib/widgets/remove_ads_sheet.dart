@@ -294,7 +294,11 @@ class RemoveAdsSheet extends StatelessWidget {
     if (!result.isSuccess) return;
 
     // Always activate on success — never gate this behind context.mounted.
-    await PurchaseService.instance.activatePaystackPurchase(productId);
+    // Pass the reference so the service can deduplicate and validate it.
+    await PurchaseService.instance.activatePaystackPurchase(
+      productId,
+      reference: result.reference,
+    );
 
     if (rootContext.mounted) {
       ScaffoldMessenger.of(rootContext).showSnackBar(SnackBar(

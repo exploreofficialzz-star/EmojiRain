@@ -138,7 +138,54 @@ class PurchaseService extends ChangeNotifier {
   }
 
   // ── Paystack payment activation ───────────────────────────────────────────
-  Future<void> activatePaystackPurchase(String productId) async {
+  //
+  // SECURITY LAYERS (client-side — no backend required):
+  //
+  //   1. Reference deduplication — each Paystack reference can only activate
+  //      the purchase ONCE. The last 100 used references are stored locally.
+  //      Replaying the same JS bridge message a second time does nothing.
+  //
+  //   2. Timestamp validation — references contain a millisecond epoch
+  //      (format: EMOJIR-NOADS-DAY-<ms>). If the embedded timestamp is more
+  //      than 60 minutes old the reference is rejected. A captured reference
+  //      from an old session cannot be replayed hours or days later.
+  //
+  //   3. Reference round-trip check — done upstream in _PaystackPageState.
+  //      _onMessage() before this method is ever called.
+  //
+  // Note: true server-side verification (calling Paystack's
+  // /transaction/verify/{ref} with the secret key) requires a backend
+  // endpoint. If you add one later, call it here and only proceed to
+  // _applyDuration() if the API confirms the transaction was successful.
+  static const String _usedRefsKey = 'paystack_used_refs';
+
+  Future<void> activatePaystackPurchase(
+    String  productId, {
+    String? reference,
+  }) async {
+    if (reference != null && reference.isNotEmpty) {
+      final prefs   = await SharedPreferences.getInstance();
+      final usedRaw = prefs.getStringList(_usedRefsKey) ?? [];
+
+      // ── Layer 1: deduplication ───────────────────────────────────────────
+      if (usedRaw.contains(reference)) return; // already activated, reject
+
+      // ── Layer 2: timestamp validation ────────────────────────────────────
+      // Reference format: EMOJIR-NOADS-<TIER>-<EPOCH_MS>
+      final parts     = reference.split('-');
+      final epochPart = parts.isNotEmpty ? int.tryParse(parts.last) : null;
+      if (epochPart != null) {
+        final refAge = DateTime.now()
+            .difference(DateTime.fromMillisecondsSinceEpoch(epochPart));
+        if (refAge.inMinutes > 60) return; // reference too old, reject
+      }
+
+      // ── Record as used (cap at 100 entries) ──────────────────────────────
+      usedRaw.add(reference);
+      if (usedRaw.length > 100) usedRaw.removeRange(0, usedRaw.length - 100);
+      await prefs.setStringList(_usedRefsKey, usedRaw);
+    }
+
     final duration = IAPIds.durations[productId];
     if (duration == null) return;
     await _applyDuration(duration);

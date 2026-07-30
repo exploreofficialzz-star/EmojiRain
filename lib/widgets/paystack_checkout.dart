@@ -393,6 +393,25 @@ class _PaystackPageState extends State<_PaystackPage> {
       final event = data['event'] as String? ?? '';
       final ref   = data['reference'] as String?;
 
+      // ── SECURITY: reference round-trip validation ─────────────────────────
+      // On a genuine success the JS sends back the reference we generated and
+      // passed to Paystack. If it doesn't match — or is missing — the message
+      // was either forged via the JS bridge or Paystack returned unexpected
+      // data. Either way, treat it as a failure rather than silently accepting
+      // it. Note: our JS already falls back to the embedded reference if
+      // Paystack returns null, so a legitimate flow always returns the correct
+      // value here.
+      if (event == 'success') {
+        final returnedRef = ref ?? '';
+        if (returnedRef.isEmpty || returnedRef != widget.reference) {
+          if (mounted) Navigator.of(context).pop(PaystackPaymentResult(
+            status:    PaystackPaymentStatus.failed,
+            productId: widget.productId,
+          ));
+          return;
+        }
+      }
+
       final result = switch (event) {
         'success' => PaystackPaymentResult(
             status:    PaystackPaymentStatus.success,
