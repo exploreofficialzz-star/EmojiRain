@@ -352,21 +352,37 @@ class GameProvider extends ChangeNotifier {
     //     CPU on checks that almost always concluded "nothing changed."
   }
 
-  // ── Spawn — original, unchanged ───────────────────────────────────────────
+  // ── Spawn ──────────────────────────────────────────────────────────────────
+  // FIX (cap overrun): the cap used to be checked ONCE before a burst that
+  // can add up to six emojis at level 12+ (one guaranteed spawn plus five
+  // probabilistic extras). That let the on-screen count spike past
+  // maxEmojisOnScreen by as many as five, right at the levels where physics,
+  // animation, and hit-testing are already most loaded. trySpawn() now
+  // tracks a running local count and re-checks the cap before every
+  // individual spawn in the burst, so the same odds/level gates apply but
+  // the cap is an actual ceiling instead of a starting-gate check.
   void _maybeSpawn() {
     if (_state != GameState.playing) return;
-    if (_emojis.where((e) => e.isFalling).length >= GameConstants.maxEmojisOnScreen) return;
+
+    int onScreen = _emojis.where((e) => e.isFalling).length;
+    if (onScreen >= GameConstants.maxEmojisOnScreen) return;
 
     _spawnAccum += 0.04;
     if (_spawnAccum < _currentLevel.spawnInterval) return;
     _spawnAccum = 0.0;
 
-    _spawnEmoji();
-    if (_level >= 2  && _rng.nextBool())         _spawnEmoji();
-    if (_level >= 4  && _rng.nextBool())         _spawnEmoji();
-    if (_level >= 6  && _rng.nextDouble() < 0.6) _spawnEmoji();
-    if (_level >= 9  && _rng.nextDouble() < 0.5) _spawnEmoji();
-    if (_level >= 12 && _rng.nextDouble() < 0.4) _spawnEmoji();
+    void trySpawn() {
+      if (onScreen >= GameConstants.maxEmojisOnScreen) return;
+      _spawnEmoji();
+      onScreen++;
+    }
+
+    trySpawn();
+    if (_level >= 2  && _rng.nextBool())         trySpawn();
+    if (_level >= 4  && _rng.nextBool())         trySpawn();
+    if (_level >= 6  && _rng.nextDouble() < 0.6) trySpawn();
+    if (_level >= 9  && _rng.nextDouble() < 0.5) trySpawn();
+    if (_level >= 12 && _rng.nextDouble() < 0.4) trySpawn();
   }
 
   void _spawnEmoji() {

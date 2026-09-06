@@ -6,6 +6,12 @@ enum TapEffectType { correct, wrong }
 
 // ── Tap Effect Data ───────────────────────────────────────────────────────────
 class TapEffect {
+  // Monotonic counter — see EmojiItem._nextId for why timestamp-based ids
+  // aren't safe here: two taps landing on the same rounded x (x.toInt())
+  // within the same timestamp bucket would previously produce the same id,
+  // and duplicate ids mean duplicate ValueKeys in _EffectLayer's Stack.
+  static int _nextId = 0;
+
   final String id;
   final double x;
   final double y;
@@ -17,7 +23,7 @@ class TapEffect {
     required this.y,
     required this.type,
     required this.emoji,
-  }) : id = '${DateTime.now().microsecondsSinceEpoch}_${x.toInt()}';
+  }) : id = '${_nextId++}';
 }
 
 // ── Tap Effect Widget ─────────────────────────────────────────────────────────

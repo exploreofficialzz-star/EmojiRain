@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../constants/app_constants.dart';
 import '../providers/game_provider.dart';
-import '../services/coin_service.dart';
 
 class ScoreHUD extends StatelessWidget {
   final GameProvider game;
@@ -84,11 +83,10 @@ class ScoreHUD extends StatelessWidget {
               // Hearts
               _HeartsRow(hearts: game.hearts, maxHearts: game.maxHearts),
 
-              // Session coins earned this game
-              ListenableBuilder(
-                listenable: CoinService.instance,
-                builder: (_, __) => _CoinCounter(sessionCoins: game.sessionCoins),
-              ),
+              // Session coins earned this game — driven entirely by
+              // game.sessionCoins, which the Selector in game_screen.dart
+              // already rebuilds this widget on. No separate listener needed.
+              _CoinCounter(sessionCoins: game.sessionCoins),
             ],
           ),
         ],
