@@ -1,33 +1,43 @@
-# Game screen audit — changed files
+# Game screen audit — round 2: stepped/hanging motion
 
-4 files touched, all bug/robustness fixes (no visual or gameplay changes).
-Drop these into your `lib/` folder, overwriting the originals.
+1 file touched: `lib/providers/game_provider.dart` (already contains the
+round-1 spawn-cap fix too — this is the full current file, drop it in as-is).
 
-## lib/models/emoji_item.dart
-`EmojiItem.id` was `DateTime.now().microsecondsSinceEpoch + rand.nextInt(9999)`.
-A single spawn tick can create up to 6 emojis synchronously (level 12+),
-and real Android clocks are often coarser than true microseconds — so two
-emojis from the same burst could land on the same id. Duplicate ids mean
-duplicate ValueKeys in the falling-emoji Stack, which Flutter can't
-reconcile correctly (an emoji can render at a stale position or steal a
-tap meant for another one). Replaced with a simple monotonic counter —
-can't ever collide.
+## The bug
+`GameProvider.emojis` (the getter GameScreen's render loop reads every
+single frame to know where to paint each emoji) was doing:
 
-## lib/widgets/tap_effect_widget.dart
-Same fix, same reasoning, for `TapEffect.id` (was timestamp + rounded x).
+    List<EmojiItem> get emojis => List.unmodifiable(_emojis);
 
-## lib/providers/game_provider.dart
-`_maybeSpawn()` checked the `maxEmojisOnScreen` cap once, then could add up
-to 6 emojis in one burst at level 12+ — so the actual on-screen count could
-spike ~5 past the intended ceiling right when the game is already hardest.
-`trySpawn()` now re-checks the cap before each individual spawn in the
-burst. Same spawn odds/level gates as before, but the cap now actually
-holds.
+`List.unmodifiable()` doesn't just wrap the list — it walks it and copies
+every element into a brand-new list. GameScreen's AnimatedBuilder calls
+this getter once per rendered frame (60+ times a second on most phones,
+more on 90/120Hz screens), so that copy was happening on every frame,
+whether 2 emojis were on screen or 40.
 
-## lib/widgets/score_hud.dart
-The session-coin counter was wrapped in a `ListenableBuilder` on
-`CoinService.instance`, but it only ever displays `game.sessionCoins`
-(GameProvider) — a value that has nothing to do with the coin service.
-That's an unnecessary rebuild dependency on unrelated wallet activity
-(spending on a power-up, etc.). Removed; the existing Selector in
-game_screen.dart already scopes this correctly.
+That's exactly the shape of what you described: at the very start there
+are only a couple of emojis, so the copy is tiny but still there — worth
+noting since two separate startup costs (banner ad load, background music
+init) are already deliberately delayed by 1s/300ms in this codebase so
+they don't collide with the opening frames; this copy wasn't one of the
+things caught by that pass. As the level climbs, more emojis spawn (up to
+40 on screen), the list being copied every frame gets bigger, and the copy
+cost climbs with it — more work stealing time from the same 16ms frame
+budget, which is what shows up as movement "stepping" instead of gliding.
+
+## The fix
+Swapped it for `UnmodifiableListView(_emojis)` (from `dart:collection`),
+which wraps the existing list instead of copying it — same "can't be
+mutated from outside" guarantee, no per-frame allocation. Confirmed safe:
+the only place this list is read (`_EmojiLayer.build`) iterates it once,
+synchronously, and never modifies `_emojis` while doing so.
+
+## Honest caveat
+I can't run the game on a device from here, so I can't fully rule out a
+second, separate contributor to the "at the beginning" hang specifically —
+things like first-time shader compilation for blur/shadow effects can
+cause a one-off hitch the first time they're painted in a session, and
+that's not something a code read can confirm or fix. If the hang at the
+very start is still there after this fix, that's the next thing worth
+chasing — profiling it on an actual device (Flutter DevTools' Performance
+view) would show exactly where those frames are going.

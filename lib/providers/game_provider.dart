@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -77,15 +78,20 @@ class GameProvider extends ChangeNotifier {
 
   // ── Getters ───────────────────────────────────────────────────────────────
   GameState        get state                  => _state;
-  // NOTE: must allocate a NEW List.unmodifiable(...) on every call, not a
-  // cached/stable reference. EmojiItem fields (x/y/etc.) are mutated in
-  // place each tick rather than the list being rebuilt, so GameScreen's
-  // Selector<GameProvider, List<EmojiItem>> relies on getting a
-  // different object identity each notify to know it must rebuild and
-  // repaint the new positions. An "optimized" cached/identical reference
-  // here would make the Selector stop rebuilding and freeze the falling
-  // animation in place.
-  List<EmojiItem>  get emojis                 => List.unmodifiable(_emojis);
+  // FIX (per-frame copy): read every frame by GameScreen's AnimatedBuilder
+  // (_renderLoop) now, NOT by a Selector — that Selector was replaced (see
+  // the AnimatedBuilder comment in game_screen.dart) but this getter never
+  // caught up. List.unmodifiable(_emojis) iterates and copies every element
+  // into a brand-new backing list on EVERY call — 60+ times a second, for a
+  // caller that rebuilds unconditionally on every tick and never needed
+  // identity-change detection in the first place. That copy cost scales
+  // with on-screen emoji count, so it was worst exactly when it hurt most:
+  // high levels, most emojis on screen — visible as falling motion
+  // "stepping" instead of gliding. UnmodifiableListView wraps _emojis
+  // directly with no copy. Safe here because the only reader
+  // (_EmojiLayer.build) iterates it synchronously in one pass and never
+  // mutates _emojis mid-iteration.
+  List<EmojiItem>  get emojis                 => UnmodifiableListView(_emojis);
   List<ScoreEvent> get scoreEvents            => List.unmodifiable(_scoreEvents);
   int              get score                  => _score;
   int              get highScore              => _highScore;
