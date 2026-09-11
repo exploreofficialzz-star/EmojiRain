@@ -84,10 +84,24 @@ class _HomeScreenState extends State<HomeScreen>
 
     NotificationService.instance.cancelComeback();
 
-    // Refresh stats every 90 s so numbers shift while user watches
+    // Refresh stats every 90 s so numbers shift while user watches — but
+    // only while this screen is actually the visible route. FIX: a plain
+    // Navigator.push (see _startGame below) never disposes HomeScreen — it
+    // just sits underneath GameScreen for the whole play session. Without
+    // this guard, this timer kept firing every 90s regardless, calling
+    // setState() on the entire (large, ~660-line) HomeScreen tree while it
+    // was covered and invisible — a real, periodic hitch competing with the
+    // game's own frame budget for no visible benefit. AnimationControllers
+    // (like _pulseController above) are automatically muted by Flutter once
+    // a route is obscured; a plain Timer.periodic has no such protection,
+    // so it needs an explicit guard.
     _statsTimer = Timer.periodic(
       const Duration(seconds: 90),
-      (_) { if (mounted) setState(() {}); },
+      (_) {
+        if (mounted && (ModalRoute.of(context)?.isCurrent ?? true)) {
+          setState(() {});
+        }
+      },
     );
 
     // Feature 3: check daily streak after frame renders

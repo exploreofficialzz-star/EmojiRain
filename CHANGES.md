@@ -1,43 +1,61 @@
-# Game screen audit — round 2: stepped/hanging motion
+# Full codebase audit — round 3
 
-1 file touched: `lib/providers/game_provider.dart` (already contains the
-round-1 spawn-cap fix too — this is the full current file, drop it in as-is).
+1 file changed: lib/screens/home_screen.dart
 
-## The bug
-`GameProvider.emojis` (the getter GameScreen's render loop reads every
-single frame to know where to paint each emoji) was doing:
+## The confirmed bug: HomeScreen keeps running in the background during play
+HomeScreen navigates to GameScreen with a plain Navigator.push (see
+_startGame) — not pushReplacement. That means HomeScreen is never disposed
+when you start a game; it just sits underneath GameScreen, alive, for the
+entire play session.
 
-    List<EmojiItem> get emojis => List.unmodifiable(_emojis);
+HomeScreen had a `Timer.periodic(90s, ...)` that calls `setState(() {})` to
+refresh some display numbers. Flutter automatically mutes AnimationControllers
+in a covered route (confirmed against Flutter's own test suite — this is
+why _pulseController was never actually a problem), but a plain Timer has
+no such protection. So every 90 seconds, for the whole time you're playing,
+it was rebuilding the entire ~660-line HomeScreen tree in the background —
+a real, periodic hitch stealing time from the game's own frame budget, for
+a screen nobody can even see.
 
-`List.unmodifiable()` doesn't just wrap the list — it walks it and copies
-every element into a brand-new list. GameScreen's AnimatedBuilder calls
-this getter once per rendered frame (60+ times a second on most phones,
-more on 90/120Hz screens), so that copy was happening on every frame,
-whether 2 emojis were on screen or 40.
+Fixed: the timer now checks `ModalRoute.of(context)?.isCurrent` before
+calling setState, so it only actually rebuilds while HomeScreen is the
+visible route.
 
-That's exactly the shape of what you described: at the very start there
-are only a couple of emojis, so the copy is tiny but still there — worth
-noting since two separate startup costs (banner ad load, background music
-init) are already deliberately delayed by 1s/300ms in this codebase so
-they don't collide with the opening frames; this copy wasn't one of the
-things caught by that pass. As the level climbs, more emojis spawn (up to
-40 on screen), the list being copied every frame gets bigger, and the copy
-cost climbs with it — more work stealing time from the same 16ms frame
-budget, which is what shows up as movement "stepping" instead of gliding.
+## What I re-checked and ruled OUT this round (with actual evidence, not guesses)
+- flutter_animate restarting the per-emoji entrance animation every frame —
+  confirmed via the package's own README this is NOT the default behavior
+  (there's an explicit opt-in `restartOnHotReload` flag specifically because
+  restarting on every rebuild is NOT what normally happens).
+- The background painter (_GameBackground / _StarfieldPainter) — confirmed
+  it's gated by level, not rebuilt every frame, and its shouldRepaint is
+  correctly implemented.
+- Tap effects (_EffectLayer) — confirmed they run off their own separate
+  ValueNotifier, not the 60fps render loop.
+- LeaderboardScreen's timers — confirmed LeaderboardScreen is dead code,
+  never actually navigated to anywhere in the app. Not a live issue.
 
-## The fix
-Swapped it for `UnmodifiableListView(_emojis)` (from `dart:collection`),
-which wraps the existing list instead of copying it — same "can't be
-mutated from outside" guarantee, no per-frame allocation. Confirmed safe:
-the only place this list is read (`_EmojiLayer.build`) iterates it once,
-synchronously, and never modifies `_emojis` while doing so.
+## Found, but deliberately NOT touched: Impeller is disabled
+android/app/src/main/AndroidManifest.xml forces the older Skia renderer
+instead of Impeller. This was NOT a careless leftover — there's a real
+comment explaining it was done because Impeller caused confirmed visual
+corruption with LinearGradient + CustomPaint on some Android GPU/driver
+combos, which is exactly what this game's background uses. Impeller would
+help with shader-compile jank (a plausible cause of a hitch "at the
+start"), but re-enabling it risks bringing back a worse, confirmed bug
+(broken visuals, not just a stutter). Not something to flip without testing
+on the actual affected device(s) first, so I left it as-is.
 
-## Honest caveat
-I can't run the game on a device from here, so I can't fully rule out a
-second, separate contributor to the "at the beginning" hang specifically —
-things like first-time shader compilation for blur/shadow effects can
-cause a one-off hitch the first time they're painted in a session, and
-that's not something a code read can confirm or fix. If the hang at the
-very start is still there after this fix, that's the next thing worth
-chasing — profiling it on an actual device (Flutter DevTools' Performance
-view) would show exactly where those frames are going.
+## The one thing I can't check from here, and genuinely might be the answer
+I don't have a device or emulator in this environment, so I cannot rule out
+that you're testing via `flutter run` in **debug mode**. Debug builds carry
+real, unavoidable overhead — JIT compilation, enabled assertions, no
+tree-shaking — that can produce exactly this kind of stepping/stuttering
+regardless of how optimized the underlying code is. If you haven't already,
+testing a profile or release build would be the single most informative
+next step:
+
+    flutter run --profile
+
+or install a release APK directly on the device. If it's smooth there and
+choppy only via `flutter run` debug, the remaining stepping isn't a bug in
+the code at all — it's expected debug-mode cost.
