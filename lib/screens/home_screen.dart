@@ -320,8 +320,8 @@ class _HomeScreenState extends State<HomeScreen>
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.45),
-                blurRadius: 36, spreadRadius: 6,
+                color: AppColors.primary.withOpacity(0.20),
+                blurRadius: 20, spreadRadius: 2,
               ),
             ],
           ),
@@ -449,11 +449,16 @@ class _HomeScreenState extends State<HomeScreen>
           margin: const EdgeInsets.symmetric(horizontal: 36),
           height: btnHeight,
           decoration: BoxDecoration(
-            gradient: AppColors.primaryBtnGradient,
+            // Reduced yellow: deeper orange-amber replaces bright gold
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end:   Alignment.bottomRight,
+              colors: [Color(0xFFFF9800), Color(0xFFE65100)],
+            ),
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color:      AppColors.primary.withOpacity(0.50),
+                color:      AppColors.primaryGlow.withOpacity(0.28),
                 blurRadius: 24, spreadRadius: 2,
                 offset: const Offset(0, 8),
               ),
