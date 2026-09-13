@@ -33,6 +33,10 @@ target 'Runner' do
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
+  # google_mobile_ads imports this federated plugin directly on iOS. Link its
+  # local Flutter pod explicitly because it is not published to CocoaPods trunk.
+  pod 'webview_flutter_wkwebview', :path => '.symlinks/plugins/webview_flutter_wkwebview/darwin'
+
   target 'RunnerTests' do
     inherit! :search_paths
   end
