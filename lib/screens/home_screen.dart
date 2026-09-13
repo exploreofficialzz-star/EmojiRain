@@ -1,38 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// lib/screens/home_screen.dart — REVISED
-//
-// CHANGES:
-//
-// 1. RESPONSIVE SCALING (the "fit all phone screens" fix). The layout was
-//    already wrapped in a SingleChildScrollView, so it never technically
-//    overflowed/crashed — but on shorter phones (older/budget Android
-//    devices in particular), the ~236px of fixed gap spacing plus fixed
-//    element sizes (120px logo, 66px button, 72px emoji showcase) pushed
-//    the PLAY NOW button — the single most important element on this
-//    screen — well past one screenful, requiring real scrolling to reach
-//    it. A LayoutBuilder now computes a `scale` factor from the actual
-//    available height vs a comfortable reference height (720dp — roughly
-//    what a mid-size modern phone offers after status bar/nav bar/banner
-//    ad). Phones at or above that reference get the exact original,
-//    spacious layout unchanged. Shorter phones get proportionally
-//    compressed spacing and element sizes, with floors so nothing shrinks
-//    below a legible/tappable minimum. The scroll view stays in place
-//    regardless, as a safety net for extreme cases (very short screens,
-//    large system font-size accessibility settings, split-screen, etc.).
-//
-// 2. HORIZONTAL OVERFLOW SAFETY in the fake-stats badges. Their text is
-//    dynamically generated (varies in length depending on current time —
-//    see _dynamicGamesPlayed / _dynamicSurvivalStat) and was rendered in
-//    an unconstrained Row with no wrap/ellipsis fallback. On a narrow
-//    device, a longer generated string could overflow the row. Wrapped in
-//    Flexible + ellipsis so it gracefully truncates instead.
-//
-// 3. BACKGROUND BUTTON — the custom-wallpaper feature previously only had
-//    an entry point inside the in-game pause menu, with no way to set a
-//    background before starting a game at all. Added alongside the sound
-//    toggle as a matched pair of secondary utility controls, using the
-//    shared showBackgroundPickerSheet() (see widgets/background_picker_
-//    sheet.dart) — same sheet the pause menu uses, not a duplicate.
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
