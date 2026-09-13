@@ -14,7 +14,7 @@ dependencies:
   provider: ^6.1.2
 
   # Ads
-  google_mobile_ads: ^5.1.0
+  google_mobile_ads: ^5.0.0
 
   # In-App Purchases
   # Updated to ^3.2.3 (latest). dependency_overrides below pins the Android
