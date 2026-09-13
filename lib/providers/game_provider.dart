@@ -158,12 +158,20 @@ class GameProvider extends ChangeNotifier {
     _level                 = 1;
     _emojis                = [];
     _scoreEvents           = [];
-    _spawnAccum            = 0.0;
+    // Reset level config FIRST so _spawnAccum below reads level-1's
+    // spawnInterval, not whatever level the previous session left
+    // _currentLevel pointing at (e.g. a Retry from level 5).
+    _currentLevel          = LevelData.getLevel(1);
+    // FIX: was 0.0 — caused ceil(spawnInterval÷0.04)×40 ms ≈ 480 ms of
+    // empty screen before the first emoji appeared (the "hang at start").
+    // Pre-loading the accumulator to spawnInterval means the very first
+    // _maybeSpawn() timer fire immediately passes the threshold check and
+    // spawns, so emojis appear within 40 ms of game start.
+    _spawnAccum            = _currentLevel.spawnInterval;
     _currentSpeed          = GameConstants.speedBase;
     _levelSecondsLeft      = 60;
     _showInterstitial      = false;
     _showRewarded          = false;
-    _currentLevel          = LevelData.getLevel(1);
     _failMessage           = '';
     _tappedEmoji           = '';
     _hearts                = GameConstants.maxHearts;
@@ -512,12 +520,22 @@ class GameProvider extends ChangeNotifier {
   void _levelUp() {
     _level++;
     _currentLevel     = LevelData.getLevel(_level);
-    _spawnAccum       = 0.0;
+    // FIX: was 0.0 — caused ceil(spawnInterval÷0.04)×40 ms ≈ 340–480 ms
+    // with NO new emojis between level transitions. Existing emojis would
+    // drain off screen, leaving an empty, "frozen" game field right as the
+    // level-up banner appeared — players perceived this as the game slowing
+    // down or hanging. Pre-loading to the new level's interval means the
+    // first emoji of the new level spawns within 40 ms of the transition.
+    _spawnAccum       = _currentLevel.spawnInterval;
     _levelSecondsLeft = 60;
-    if (_currentSpeed < _currentLevel.baseSpeed) {
-      _currentSpeed = _currentLevel.baseSpeed
-          .clamp(GameConstants.speedBase, GameConstants.speedMax);
-    }
+    // FIX: the old conditional `if (_currentSpeed < baseSpeed)` was dead
+    // code after level 1 — continuous speedGrowthRate always kept
+    // _currentSpeed above every subsequent baseSpeed, so the condition
+    // never fired and players felt NO speed change at level-up. Replaced
+    // with an unconditional instant boost (levelUpSpeedBoost) so every
+    // level transition is clearly felt as "it just got faster."
+    _currentSpeed = (_currentSpeed + GameConstants.levelUpSpeedBoost)
+        .clamp(GameConstants.speedBase, GameConstants.speedMax);
     _sessionCoins += GameConstants.coinsPerLevelUp * _level;
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();

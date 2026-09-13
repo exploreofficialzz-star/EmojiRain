@@ -137,7 +137,15 @@ class GameConstants {
   static const double speedBase         = 150.0;
   static const double speedMax          = 3000.0;
   static const double speedIncrement    = 12.0;
-  static const double speedGrowthRate   = 1.25;
+  // FIX: was 1.25 → only added 75 px/s per 60-second level (imperceptible).
+  // Now 2.0 → adds 120 px/s per level, so players clearly feel acceleration
+  // within each level without the game becoming unplayable in early levels.
+  static const double speedGrowthRate   = 2.0;
+  // FIX: immediate speed burst applied at every level-up so the transition
+  // FEELS noticeably faster. The old conditional baseSpeed check was dead
+  // code after level 1 (continuous growth always kept _currentSpeed above
+  // every subsequent baseSpeed). This replaces that pattern.
+  static const double levelUpSpeedBoost = 25.0;
   static const double spawnIntervalBase = 0.50;
   static const double spawnIntervalMin  = 0.16;
 
