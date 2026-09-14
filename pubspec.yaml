@@ -87,8 +87,8 @@ dev_dependencies:
 #   • Remove this block once in_app_purchase officially bumps to ^0.5.0.
 dependency_overrides:
   in_app_purchase_android: 0.5.0
-  # 0.4.9+ adds StoreKit win-back APIs unavailable on the CI Xcode SDK.
-  in_app_purchase_storekit: 0.4.8+1
+  # 0.4.0+ uses StoreKit win-back APIs unavailable on the CI Xcode SDK.
+  in_app_purchase_storekit: 0.3.22+1
 
 flutter_launcher_icons:
   android: true
