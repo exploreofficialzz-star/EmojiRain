@@ -134,18 +134,16 @@ class GameConstants {
   static const double emojiSizeBase     = 82.0;
   static const double emojiSizeLarge    = 96.0;
   static const double emojiSizeSmall    = 66.0;
-  static const double speedBase         = 150.0;
+  // FIX (2nd pass): was 150.0 — disconnected from LevelData.levels[0]
+  // .baseSpeed (130), which is where gameplay actually starts (see
+  // GameProvider.startGame). Speed growth is now driven entirely off the
+  // LevelConfig.baseSpeed table already tuned per level (see
+  // GameProvider._growthRateFor) instead of a flat constant, so this must
+  // equal level 1's baseSpeed exactly — it doubles as the starting speed
+  // and the floor speed can never fall below.
+  static const double speedBase         = 130.0;
   static const double speedMax          = 3000.0;
   static const double speedIncrement    = 12.0;
-  // FIX: was 1.25 → only added 75 px/s per 60-second level (imperceptible).
-  // Now 2.0 → adds 120 px/s per level, so players clearly feel acceleration
-  // within each level without the game becoming unplayable in early levels.
-  static const double speedGrowthRate   = 2.0;
-  // FIX: immediate speed burst applied at every level-up so the transition
-  // FEELS noticeably faster. The old conditional baseSpeed check was dead
-  // code after level 1 (continuous growth always kept _currentSpeed above
-  // every subsequent baseSpeed). This replaces that pattern.
-  static const double levelUpSpeedBoost = 25.0;
   static const double spawnIntervalBase = 0.50;
   static const double spawnIntervalMin  = 0.16;
 

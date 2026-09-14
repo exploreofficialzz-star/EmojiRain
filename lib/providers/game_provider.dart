@@ -56,6 +56,14 @@ class GameProvider extends ChangeNotifier {
   double _screenHeight      = 844;
   double _spawnAccum        = 0.0;
   double _currentSpeed      = GameConstants.speedBase;
+  // Per-second speed growth for the level in progress — recomputed
+  // whenever _currentLevel changes (see _growthRateFor). Continuous
+  // growth at this rate carries _currentSpeed from this level's
+  // baseSpeed to exactly the next level's baseSpeed over the level's
+  // 60-second duration, so pacing always matches the LevelData table
+  // already tuned for that level's spawnInterval/emojiMix/emojiSize —
+  // no separate speed constant to keep in sync by hand.
+  double _currentGrowthRate = 0.0;
   final  Random _rng        = Random();
 
   // Game loop clock — driven by a Ticker (a per-frame, vsync-synced
@@ -168,7 +176,13 @@ class GameProvider extends ChangeNotifier {
     // _maybeSpawn() timer fire immediately passes the threshold check and
     // spawns, so emojis appear within 40 ms of game start.
     _spawnAccum            = _currentLevel.spawnInterval;
-    _currentSpeed          = GameConstants.speedBase;
+    // FIX (2nd pass — speed curve): start exactly at level 1's
+    // designed baseSpeed. LevelData is now the single source of truth
+    // for starting speed (previously duplicated as a separate
+    // GameConstants value that could silently drift out of sync with
+    // the level table).
+    _currentSpeed          = _currentLevel.baseSpeed;
+    _currentGrowthRate     = _growthRateFor(_currentLevel);
     _levelSecondsLeft      = 60;
     _showInterstitial      = false;
     _showRewarded          = false;
@@ -236,7 +250,13 @@ class GameProvider extends ChangeNotifier {
   void continueAfterRewardedAd() {
     _emojis.clear();
     _scoreEvents.clear();
-    _spawnAccum       = 0;
+    // FIX (2nd pass): was 0 — same dead-spawn-gap pattern as
+    // startGame()/_levelUp() above (~340-480 ms with no new emojis),
+    // except triggered here every time a player uses a rewarded ad to
+    // continue after dying — which skews toward higher levels, where
+    // a dead gap right as play resumes would read as yet another "it
+    // slowed down" moment.
+    _spawnAccum       = _currentLevel.spawnInterval;
     _showRewarded     = false;
     _showInterstitial = false;
     _hearts           = GameConstants.maxHearts;
@@ -345,7 +365,18 @@ class GameProvider extends ChangeNotifier {
     if (_state != GameState.playing) return;
 
     if (!_slowMoActive) {
-      _currentSpeed = (_currentSpeed + GameConstants.speedGrowthRate * dt)
+      // FIX (2nd pass): rate is now _currentGrowthRate, computed per
+      // level from the LevelData baseSpeed table (see _growthRateFor)
+      // instead of a flat constant. The previous flat rate (2.0 →
+      // +120 px/s per 60-second level) was roughly 6-8x steeper than
+      // what the table's baseSpeed column actually specifies per
+      // level (+15 to +30 px/s). By level 4, actual speed was already
+      // ~3x what spawnInterval/emojiMix/emojiSize were tuned around,
+      // and the gap kept compounding every level after — that's what
+      // made it feel like it was spinning out of control rather than
+      // ramping up naturally starting around level 3. This ties the
+      // two back together.
+      _currentSpeed = (_currentSpeed + _currentGrowthRate * dt)
           .clamp(GameConstants.speedBase, GameConstants.speedMax);
     }
 
@@ -517,6 +548,19 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  // Growth rate (px/s per second) that carries _currentSpeed from
+  // `lvl`'s baseSpeed to the NEXT level's baseSpeed over exactly 60
+  // seconds — i.e. the per-level pacing already implied by the
+  // LevelData table, so speed always arrives at the next level already
+  // matching what that level's spawnInterval/emojiMix/emojiSize were
+  // tuned around. Safe for any level number — LevelData.getLevel()
+  // always returns a valid config, computing one procedurally past
+  // level 15.
+  double _growthRateFor(LevelConfig lvl) {
+    final next = LevelData.getLevel(lvl.level + 1);
+    return (next.baseSpeed - lvl.baseSpeed) / 60.0;
+  }
+
   void _levelUp() {
     _level++;
     _currentLevel     = LevelData.getLevel(_level);
@@ -528,14 +572,19 @@ class GameProvider extends ChangeNotifier {
     // first emoji of the new level spawns within 40 ms of the transition.
     _spawnAccum       = _currentLevel.spawnInterval;
     _levelSecondsLeft = 60;
-    // FIX: the old conditional `if (_currentSpeed < baseSpeed)` was dead
-    // code after level 1 — continuous speedGrowthRate always kept
-    // _currentSpeed above every subsequent baseSpeed, so the condition
-    // never fired and players felt NO speed change at level-up. Replaced
-    // with an unconditional instant boost (levelUpSpeedBoost) so every
-    // level transition is clearly felt as "it just got faster."
-    _currentSpeed = (_currentSpeed + GameConstants.levelUpSpeedBoost)
+    // FIX (2nd pass): the previous fix replaced dead code with an
+    // INSTANT +25 px/s jump at every level-up — that made the
+    // transition "feel" faster, but a sudden pop is a discontinuity,
+    // not a flow, and compounded with the too-steep growth rate above
+    // to make speed run away starting around level 3-4. Continuous
+    // growth (see _update) is now calibrated to land _currentSpeed
+    // exactly on this level's baseSpeed by the time this method runs,
+    // so this line only corrects float drift — it is not a
+    // perceptible jump. The "it just leveled up" feel now comes from
+    // the level-up sound + banner, not a speed spike.
+    _currentSpeed = _currentLevel.baseSpeed
         .clamp(GameConstants.speedBase, GameConstants.speedMax);
+    _currentGrowthRate = _growthRateFor(_currentLevel);
     _sessionCoins += GameConstants.coinsPerLevelUp * _level;
     AudioService.instance.play(SoundEffect.levelup);
     notifyListeners();
