@@ -35,7 +35,11 @@ dependencies:
   just_audio: ^0.9.37
 
   # Microphone — beat detection from ambient music
-  record: ^5.0.0
+  # Pinned to ^5.1.0: this version locks record_linux to ^0.8.0 and
+  # record_platform_interface to ^1.6.0, so all three compile together.
+  # ^5.0.0 paired with a pub resolver that picks record_platform_interface 1.6.0
+  # while leaving record_linux at 0.7.2 causes a compile-time interface mismatch.
+  record: ^5.1.0
 
   # Animations
   flutter_animate: ^4.5.0
@@ -73,10 +77,19 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1
 
-# ── Google Play Billing Library 8.x compliance ────────────────────────────────
+# ── Forced version pins ────────────────────────────────────────────────────────
 dependency_overrides:
+  # Google Play Billing Library 8.x compliance (pre-existing)
   in_app_purchase_android: 0.5.0
   in_app_purchase_storekit: 0.3.22+1
+
+  # record sub-package triangle fix:
+  #   record ^5.0.0 can allow pub to resolve record_platform_interface to 1.6.0
+  #   while record_linux stays at 0.7.2, which doesn't implement startStream.
+  #   Pinning both here ensures record_linux 0.8.x (implements startStream) and
+  #   record_platform_interface 1.6.x (declares it) are always resolved together.
+  record_linux: '>=0.8.0 <1.0.0'
+  record_platform_interface: '>=1.6.0 <2.0.0'
 
 flutter_launcher_icons:
   android: true
