@@ -4,6 +4,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import 'constants/app_constants.dart';
 import 'providers/game_provider.dart';
+import 'providers/room_provider.dart';
 import 'screens/home_screen.dart';
 import 'services/ad_service.dart';
 import 'services/audio_service.dart';
@@ -89,6 +90,9 @@ class EmojiRainApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: CoinService.instance),
         ChangeNotifierProvider.value(value: StreakService.instance),
         ChangeNotifierProvider.value(value: WallpaperService.instance),
+
+        // ── Phase 2: Multiplayer room state ──────────────────────────────
+        ChangeNotifierProvider.value(value: RoomProvider.instance),
       ],
       child: MaterialApp(
         title:                      'Emoji Rain',

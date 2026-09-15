@@ -23,10 +23,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 
-	<!-- ══ AdMob ═════════════════════════════════════════════════════════
-	     ⚠️  Replace GADApplicationIdentifier with your real AdMob iOS App ID!
-	     This is Google's test App ID.
-	════════════════════════════════════════════════════════════════════ -->
+	<!-- ══ AdMob ═══════════════════════════════════════════════════════════ -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>GADIsAdManagerApp</key>
@@ -39,6 +36,10 @@
 	<!-- Required for iOS 14+ ad targeting transparency -->
 	<key>NSUserTrackingUsageDescription</key>
 	<string>We use device info to show you relevant ads and improve your experience.</string>
+
+	<!-- ══ Microphone — Beat Mode BPM detection from ambient music ═════════ -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Emoji Rain listens to music playing in the room to sync emoji drops to the beat.</string>
 
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

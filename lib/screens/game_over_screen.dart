@@ -10,6 +10,7 @@ import '../services/notification_service.dart';
 import '../services/purchase_service.dart';
 import '../widgets/network_banner.dart';
 import '../widgets/remove_ads_sheet.dart';
+import '../widgets/share_card_widget.dart';
 import 'game_screen.dart';
 
 class GameOverScreen extends StatefulWidget {
@@ -24,7 +25,7 @@ class _GameOverScreenState extends State<GameOverScreen> {
   bool _showingAd     = false;
   bool _rewardOffered = false;
   bool _adShown       = false;
-  bool _scoreCopied   = false;
+  // _scoreCopied removed — sharing now handled by ShareCardWidget (Phase 4)
 
   @override
   void initState() {
@@ -76,36 +77,6 @@ class _GameOverScreenState extends State<GameOverScreen> {
     Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
-  Future<void> _shareScore(GameProvider game) async {
-    final text =
-        '🎮 I scored ${game.score} pts on Emoji Rain: Focus or Fail!\n'
-        '🏆 Best score: ${game.highScore}\n'
-        '🔥 Combo: ×${game.maxCombo}\n'
-        'Can you beat me? Download now! #EmojiRain #FocusOrFail';
-
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      setState(() => _scoreCopied = true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Row(children: [
-          Text('📋', style: TextStyle(fontSize: 16)),
-          SizedBox(width: 8),
-          Text(
-            'Score copied! Paste & share anywhere.',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ]),
-        backgroundColor: AppColors.surfaceCard,
-        behavior:        SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ));
-    }
-  }
 
   Future<void> _watchAdForContinue(BuildContext context) async {
     final game = context.read<GameProvider>();
@@ -180,8 +151,13 @@ class _GameOverScreenState extends State<GameOverScreen> {
                               const SizedBox(height: 12),
                             ],
 
-                            // Feature 5: Share score
-                            _buildShareButton(game),
+                            // Phase 4: Rich shareable image card
+                            ShareCardWidget(
+                              score:       game.score,
+                              level:       game.level,
+                              maxCombo:    game.maxCombo,
+                              accuracyPct: 0,
+                            ),
                             const SizedBox(height: 12),
 
                             // Remove Ads or status
@@ -274,39 +250,6 @@ class _GameOverScreenState extends State<GameOverScreen> {
         );
   }
 
-  // ── Feature 5: Share Score ─────────────────────────────────────────────────
-  Widget _buildShareButton(GameProvider game) {
-    return GestureDetector(
-      onTap: () => _shareScore(game),
-      child: Container(
-        width: double.infinity, height: 46,
-        decoration: BoxDecoration(
-          color: AppColors.surfaceCard,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              _scoreCopied ? '✅' : '📤',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _scoreCopied ? 'Copied to Clipboard!' : 'Share Score',
-              style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700,
-                color: _scoreCopied
-                    ? AppColors.success
-                    : AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(delay: 850.ms);
-  }
 
   // ── Existing widgets (unchanged) ───────────────────────────────────────────
   Widget _buildRemoveAdsBanner(BuildContext context) {

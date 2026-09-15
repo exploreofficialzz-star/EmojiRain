@@ -64,7 +64,7 @@ class GameProvider extends ChangeNotifier {
   // already tuned for that level's spawnInterval/emojiMix/emojiSize —
   // no separate speed constant to keep in sync by hand.
   double _currentGrowthRate = 0.0;
-  final  Random _rng        = Random();
+  Random _rng              = Random();
 
   // Game loop clock — driven by a Ticker (a per-frame, vsync-synced
   // callback), not Timer.periodic. Timer.periodic runs on the Dart
@@ -605,6 +605,14 @@ class GameProvider extends ChangeNotifier {
     _showInterstitial = true;
     _showRewarded     = true;
     notifyListeners();
+  }
+
+
+  // ── Multiplayer seed support (Phase 2 extension) ──────────────────────────
+  /// Call before [startGame] to lock the RNG to a shared seed so all
+  /// multiplayer clients produce the same emoji fall sequence.
+  void setSeed(int seed) {
+    _rng = Random(seed);
   }
 
   @override

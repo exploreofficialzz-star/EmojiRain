@@ -1,7 +1,7 @@
 name: emoji_rain
 description: Emoji Rain - Focus or Fail. A fast-paced emoji tapping game.
 publish_to: 'none'
-version: 1.0.0+86
+version: 1.0.0+87
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -17,22 +17,25 @@ dependencies:
   google_mobile_ads: ^5.0.0
 
   # In-App Purchases
-  # Updated to ^3.2.3 (latest). dependency_overrides below pins the Android
-  # implementation to 0.5.0 which ships with Google Play Billing Library 8.x,
-  # required by Google from August 31, 2026.
   in_app_purchase: ^3.2.3
 
-  # Real internet/data connection check (not just network type)
+  # Real internet/data connection check
   internet_connection_checker_plus: ^2.5.1
 
-  # Network type detection (wifi vs mobile vs none)
+  # Network type detection
   connectivity_plus: ^6.0.3
 
   # Notifications
   flutter_local_notifications: ^17.2.2
 
-  # Audio
+  # Audio — existing game SFX/BGM
   audioplayers: ^6.1.0
+
+  # Audio — beat mode track playback
+  just_audio: ^0.9.37
+
+  # Microphone — beat detection from ambient music
+  record: ^5.0.0
 
   # Animations
   flutter_animate: ^4.5.0
@@ -47,24 +50,22 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # Paystack — WebView-based inline popup.
-  # Replaces flutter_paystack which required http ^0.13.x, conflicting
-  # with internet_connection_checker_plus >=2.0.0 (needs http ^1.0.0).
   webview_flutter: ^4.10.0
 
-  # Custom game background — lets the player pick a photo from their
-  # gallery to use as the falling-emoji background instead of the default
-  # starfield. On Android 13+, image_picker uses the system Photo Picker,
-  # which needs NO runtime storage permission at all. On older Android
-  # versions it requests read access itself via its own manifest merge —
-  # no manual AndroidManifest.xml changes needed for either case.
+  # Custom game background
   image_picker: ^1.1.2
 
-  # Copies the picked image into the app's own persistent documents
-  # directory. Required because image_picker's returned path is a
-  # temporary cache location not guaranteed to survive an app restart —
-  # copying it into a stable, app-controlled location is the reliable way
-  # to keep a "wallpaper" set across sessions.
+  # Stable persistent file paths
   path_provider: ^2.1.4
+
+  # Share result card (Phase 4)
+  share_plus: ^7.2.1
+
+  # HTTP — multiplayer room API + SSE streaming
+  http: ^1.2.0
+
+  # HTTP header/content-type parsing
+  http_parser: ^4.0.2
 
 dev_dependencies:
   flutter_test:
@@ -72,22 +73,9 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.1
 
-# ── Google Play Billing Library 8.x compliance (deadline: Aug 31, 2026) ──────
-#
-# in_app_purchase 3.2.3 still pins in_app_purchase_android: ^0.4.0, which
-# ships with Billing Library 7.x. Google now requires 8.0.0 or later.
-# flutter.dev published in_app_purchase_android 0.5.0 (May 27, 2026) to
-# address exactly this deadline; the main package just hasn't caught up yet.
-#
-# This override forces pub to resolve to 0.5.0 instead of the ^0.4.0 that
-# in_app_purchase declares. It is safe because:
-#   • purchase_service.dart uses ONLY the abstract InAppPurchase API —
-#     no InAppPurchaseAndroidPlatformAddition or BillingClientWrapper calls —
-#     so the Dart surface area is completely unchanged.
-#   • Remove this block once in_app_purchase officially bumps to ^0.5.0.
+# ── Google Play Billing Library 8.x compliance ────────────────────────────────
 dependency_overrides:
   in_app_purchase_android: 0.5.0
-  # 0.4.0+ uses StoreKit win-back APIs unavailable on the CI Xcode SDK.
   in_app_purchase_storekit: 0.3.22+1
 
 flutter_launcher_icons:
@@ -104,4 +92,5 @@ flutter:
   assets:
     - assets/images/
     - assets/sounds/
+    - assets/audio/beats/
     - assets/adi-registration.properties

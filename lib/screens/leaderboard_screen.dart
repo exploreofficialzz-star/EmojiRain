@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
+import '../providers/game_provider.dart';
 import '../services/leaderboard_service.dart';
 import '../services/profile_service.dart';
+import 'home_screen.dart' show rankFor, kRanks;
 import 'profile_setup_screen.dart';
 
 class LeaderboardScreen extends StatefulWidget {
@@ -104,6 +107,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                       child: Column(
                         children: [
+                          _buildMyRankSection(
+                              context.read<GameProvider>().highScore),
+                          const SizedBox(height: 10),
                           _buildLiveBar(),
                           const SizedBox(height: 10),
                           _buildCountdownCard(),
@@ -128,6 +134,107 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
         ),
       ),
     );
+  }
+
+  // ── My Rank section (Phase 3.2) ───────────────────────────────────────────
+  Widget _buildMyRankSection(int highScore) {
+    final rank   = rankFor(highScore);
+    final isMax  = rank.name == 'Legend';
+    final nextRank = isMax ? null
+        : kRanks[kRanks.indexOf(rank) + 1];
+    final progress = isMax
+        ? 1.0
+        : (highScore - rank.minScore) /
+              (rank.maxScore - rank.minScore + 1).toDouble();
+    final ptsToNext = isMax ? 0 : (rank.maxScore - highScore + 1);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withOpacity(0.10),
+            AppColors.accent.withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end:   Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'MY RANK',
+            style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w800,
+              color: AppColors.textSecondary, letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(rank.emoji, style: const TextStyle(fontSize: 32)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          rank.name,
+                          style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        Text(
+                          '$highScore pts',
+                          style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: LinearProgressIndicator(
+                        value:           progress.clamp(0.0, 1.0),
+                        backgroundColor: AppColors.surface,
+                        color:           AppColors.primary,
+                        minHeight:       7,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    if (!isMax && nextRank != null)
+                      Text(
+                        '$ptsToNext pts to ${nextRank.name} ${nextRank.emoji}',
+                        style: const TextStyle(
+                          fontSize: 10, color: AppColors.textSecondary,
+                        ),
+                      )
+                    else
+                      const Text(
+                        '🏆 Maximum rank achieved',
+                        style: TextStyle(
+                          fontSize: 10, color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
   }
 
   // ── Header ─────────────────────────────────────────────────────────────────
